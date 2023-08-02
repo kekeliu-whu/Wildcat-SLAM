@@ -78,6 +78,9 @@ catkin_package(
 set(
     PROJECT_SRCS
     src/common/utils.cc
+    src/common/msg_conversion.cc
+    src/common/time.cc
+    src/odometry/surfel_odometry.cc
 )
 list(APPEND PROJECT_SRCS ${ALL_PROTO_SRCS})
 
