@@ -12,9 +12,9 @@
 #include "common/msg_conversion.h"
 #include "odometry/surfel_odometry.h"
 
-DEFINE_bool(is_offline_mode, false, "Runtime mode: online or offline.");
+DEFINE_bool(is_offline_mode, true, "Runtime mode: online or offline.");
 
-DEFINE_string(bag_filename, "", "Bag file to read in offline mode.");
+DEFINE_string(bag_filename, "/home/rick/Documents/raw_data/hilti/exp04_construction_upper_level.bag-filtered.bag", "Bag file to read in offline mode.");
 
 volatile sig_atomic_t g_signal_stop = 0;
 
