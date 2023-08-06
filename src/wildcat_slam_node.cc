@@ -37,9 +37,9 @@ void HandleImuMessage(
 void HandleLidarMessage(
     const sensor_msgs::PointCloud2ConstPtr &msg,
     const std::shared_ptr<SurfelOdometry>  &laser_odometry_handler) {
-  pcl::PointCloud<hilti_ros::Point> cloud;
-  pcl::fromROSMsg(*msg, cloud);
-  laser_odometry_handler->AddLidarPoints();
+  pcl::PointCloud<hilti_ros::Point>::Ptr cloud(new pcl::PointCloud<hilti_ros::Point>);
+  pcl::fromROSMsg(*msg, *cloud);
+  laser_odometry_handler->AddLidarScan(cloud);
 }
 
 int main(int argc, char **argv) {
@@ -57,7 +57,11 @@ int main(int argc, char **argv) {
   CHECK_EQ(FLAGS_is_offline_mode, true);
   CHECK_NE(FLAGS_bag_filename, "");
 
-  auto so = std::make_shared<SurfelOdometry>(0.05, 800, 10);
+  auto        so = std::make_shared<SurfelOdometry>(0.05, 800, 10);
+  Vector3d    lidar2imu_pos{-0.001, -0.00855, 0.055};
+  Quaterniond lidar2imu_rot{(Eigen::Matrix3d() << -5.32125e-08, -1, 0, -1, -5.32125e-08, -0, 0, 0, -1)
+                                .finished()};
+  so->SetExtrinsicLidar2Imu(Rigid3d{lidar2imu_pos, lidar2imu_rot});
 
   if (FLAGS_is_offline_mode) {
     LOG(INFO) << "Using offline mode ...";

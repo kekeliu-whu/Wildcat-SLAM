@@ -1,15 +1,8 @@
 #pragma once
 
 #include <deque>
-#include "common/rigid_transform.h"
 
-struct Surfel {
-  double           timestamp;
-  double           resolution;
-  Eigen::Vector3d  center;
-  Eigen::Vector3d  norm;
-  Eigen::Matrix3cd covariance;
-};
+#include "surfel_extraction.h"
 
 struct TimestampedPose {
   double  timestamp;
@@ -37,7 +30,9 @@ class SurfelOdometry {
    * @brief Add raw lidar points with timestamp
    *
    */
-  void AddLidarPoints();
+  void AddLidarScan(const pcl::PointCloud<hilti_ros::Point>::Ptr &msg);
+
+  void SetExtrinsicLidar2Imu(const Rigid3d &pose);
 
  private:
   bool CubicBSplineInterpolate(double timestamp, Rigid3d &pose);
@@ -54,4 +49,6 @@ class SurfelOdometry {
   std::deque<Surfel>          surfel_list_;
   std::deque<TimestampedPose> sampled_poses_;
   std::deque<TimestampedPose> sampled_poses_corr_;
+
+  Rigid3d pose_lidar2imu_;
 };

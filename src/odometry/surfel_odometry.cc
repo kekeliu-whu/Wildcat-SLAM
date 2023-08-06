@@ -1,13 +1,29 @@
 #include <glog/logging.h>
+#include <pcl/io/ply_io.h>
+#include <iomanip>
 
 #include "odometry/surfel_odometry.h"
+#include "surfel_extraction.h"
 
 std::vector<std::pair<int, int>> BuildSurfelCorrespondences(const std::deque<Surfel> &surfel_list) {
   // todo kk
   return {};
 }
 
-void SurfelOdometry::AddLidarPoints() {
+void SurfelOdometry::AddLidarScan(const pcl::PointCloud<hilti_ros::Point>::Ptr &msg) {
+  for (int i = 0; i < msg->size() - 1; ++i) {
+    CHECK_GT(msg->points[i + 1].time, msg->points[i].time);
+  }
+
+  // 将点从雷达系转换至IMU系
+  for (auto &e : *msg) {
+    e.getVector3fMap() = this->pose_lidar2imu_.cast<float>() * e.getVector3fMap();
+  }
+
+  // undistort points of a scan
+  std::vector<Surfel> surfels;
+  BuildSurfels(msg, surfels);
+
   // Collect imu and lidar measurements
   // predict pose by imu integration
   // project lidar points into world frame
@@ -41,4 +57,8 @@ bool SurfelOdometry::UpdateSamplePoses() {
 
 bool SurfelOdometry::UpdateImuPoses() {
   return true;
+}
+
+void SurfelOdometry::SetExtrinsicLidar2Imu(const Rigid3d &pose) {
+  this->pose_lidar2imu_ = pose;
 }
