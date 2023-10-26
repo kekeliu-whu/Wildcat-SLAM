@@ -1,12 +1,14 @@
 <?xml version="1.0"?>
 <package>
-  <name>wildcat-slam</name>
+  <name>wildcat_slam</name>
   <version>0.0.1</version>
 
   <description>
     This is an implentation of Wildcat SLAM.
     Wildcat SLAM is described in the following paper:
-    Ramezani, M., Khosoussi, K., Catt, G., Moghadam, P., Williams, J., Borges, P., Pauling, F. and Kottege, N., 2022. Wildcat: Online continuous-time 3d lidar-inertial slam. arXiv preprint arXiv:2205.12595.
+    Ramezani, M., Khosoussi, K., Catt, G., Moghadam, P., Williams, J., Borges, P., Pauling, F. and
+    Kottege, N., 2022. Wildcat: Online continuous-time 3d lidar-inertial slam. arXiv preprint
+    arXiv:2205.12595.
   </description>
 
   <maintainer email="rickyrickc132@gmail.com">Rick Liu</maintainer>
@@ -14,17 +16,17 @@
   <license>GPLv3</license>
 
   <author email="rickyrickc132@gmail.com">Rick Liu</author>
-  
+
   <buildtool_depend>catkin</buildtool_depend>
   <build_depend>geometry_msgs</build_depend>
   <build_depend>nav_msgs</build_depend>
   <build_depend>roscpp</build_depend>
   <build_depend>rospy</build_depend>
-  <build_depend>std_msgs</build_depend>  
+  <build_depend>std_msgs</build_depend>
   <build_depend>rosbag</build_depend>
   <build_depend>sensor_msgs</build_depend>
   <build_depend>tf</build_depend>
-  
+
   <run_depend>geometry_msgs</run_depend>
   <run_depend>nav_msgs</run_depend>
   <run_depend>sensor_msgs</run_depend>

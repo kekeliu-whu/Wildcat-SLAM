@@ -1,64 +1,52 @@
 #ifndef VOXEL_MAP_UTIL_HPP
 #define VOXEL_MAP_UTIL_HPP
 
+#include <absl/container/flat_hash_map.h>
 #include <glog/logging.h>
 #include <pcl/common/io.h>
+#include <ros/publisher.h>
 #include <rosbag/bag.h>
-#include <stdio.h>
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
 #include <Eigen/Core>
 #include <Eigen/Dense>
 #include <Eigen/StdVector>
-#include <execution>
-#include <string>
-#include <unordered_map>
 
 #include "common/common.h"
+#include "odometry/surfel.h"
 
 #define HASH_P 116101
 #define MAX_N 10000000000
 
-struct Surfel {
-  double           timestamp;
-  double           resolution;
-  Eigen::Vector3d  center;
-  Eigen::Vector3d  norm;
-  Eigen::Matrix3cd covariance;
-};
-
-typedef struct PointWithCovMeta {
-  double          timestamp;
-  Eigen::Vector3d pw;  // point in world frame
-} pointWithCovMeta;
-
 // 3D point with covariance
-typedef struct PointWithCov : pointWithCovMeta {
-} pointWithCov;
+struct PointWithCov {
+  double   timestamp;
+  Vector3d pw;  // point in world frame
+};
 
 // a point to plane matching structure
 typedef struct PointPlaneMatchInfo {
-  pointWithCov                pv;
-  Eigen::Vector3d             normal;     // plane normal vector in world frame
-  Eigen::Vector3d             center;     // plane center point in world frame
+  PointWithCov                pv;
+  Vector3d                    normal;     // plane normal vector in world frame
+  Vector3d                    center;     // plane center point in world frame
   Eigen::Matrix<double, 6, 6> plane_cov;  // plane covariance in world frame
   double                      d;          // used to compute point-plane distance
   int                         layer;
 } ptpl;
 
 typedef struct Plane {
-  double          timestamp;
-  Eigen::Vector3d center;
-  Eigen::Vector3d normal;
-  Eigen::Vector3d y_normal;
-  Eigen::Vector3d x_normal;
-  Eigen::Matrix3d covariance;
-  float           radius          = 0;  // if the plane points are evenly distributed in a circle, then radius*2 will be real radius of the circle
-  float           min_eigen_value = 1;
-  float           mid_eigen_value = 1;
-  float           max_eigen_value = 1;
-  float           d               = 0;
-  int             points_size     = 0;
+  double   timestamp;
+  Vector3d center;
+  Vector3d normal;
+  Vector3d y_normal;
+  Vector3d x_normal;
+  Matrix3d covariance;
+  float    radius          = 0;  // if the plane points are evenly distributed in a circle, then radius*2 will be real radius of the circle
+  float    min_eigen_value = 1;
+  float    mid_eigen_value = 1;
+  float    max_eigen_value = 1;
+  float    d               = 0;
+  int      points_size     = 0;
 
   bool is_plane = false;
   int  id;
@@ -66,10 +54,14 @@ typedef struct Plane {
 
 class VoxelLoc {
  public:
-  int64_t x, y, z;
+  int32_t x, y, z;
 
-  VoxelLoc(int64_t vx = 0, int64_t vy = 0, int64_t vz = 0)
-      : x(vx), y(vy), z(vz) {}
+  VoxelLoc(const Vector3d &pos, double resolution) {
+    Eigen::Vector3i loc = (pos / resolution).array().floor().cast<int32_t>();
+    x                   = loc[0];
+    y                   = loc[1];
+    z                   = loc[2];
+  }
 
   bool operator==(const VoxelLoc &other) const {
     return (x == other.x && y == other.y && z == other.z);
@@ -90,55 +82,74 @@ struct hash<VoxelLoc> {
 
 class OctoTree {
  public:
-  std::vector<pointWithCovMeta> temp_points_;  // all points in an octo tree
-  std::vector<pointWithCovMeta> new_points_;   // new points in an octo tree
-  Plane                        *plane_ptr_;
-  int                           max_layer_;
-  int                           layer_;
-  int                           octo_state_;  // 0 is end of tree, 1 is not
-  OctoTree                     *leaves_[8];
-  double                        voxel_center_[3];  // x, y, z
-  std::vector<int>              layer_point_size_;
-  float                         quarter_length_;
-  float                         planer_threshold_;
-  int                           max_plane_update_threshold_;
-  int                           update_size_threshold_;
-  int                           all_points_num_;
-  int                           new_points_num_;
-  int                           max_points_size_;
-  int                           max_cov_points_size_;
-  bool                          init_octo_;
-  bool                          update_cov_enable_;
-  bool                          update_enable_;
-  double                        min_plane_likeness_;
+  std::vector<PointWithCov> temp_points_;  // all points in an octo tree
+  Plane                    *plane_ptr_;
+  int                       layer_;
+  int                       octo_state_;  // 0 is leaf node, 1 is not
+  OctoTree                 *leaves_[8];
+  double                    voxel_center_[3];
+  float                     quarter_length_;
+  Vector3d                  view_point_;  // todo kk set plane norm by trajectory instead of one point
+
+  float  planer_threshold_;
+  double min_plane_likeness_;
+
+  int              layer_point_size_plane_threshold_;
+  std::vector<int> layer_point_size_;
+  int              max_layer_;
 
   OctoTree(int max_layer, int layer, std::vector<int> layer_point_size,
-           int max_point_size, int max_cov_points_size, float planer_threshold, double min_plane_likeness);
+           float planer_threshold, double min_plane_likeness,
+           const Vector3d &view_point);
+
+  ~OctoTree() {
+    delete plane_ptr_;
+
+    for (int i = 0; i < 8; ++i) {
+      if (leaves_[i]) {
+        delete leaves_[i];
+      }
+    }
+  }
 
   // check is plane , calc plane parameters including plane covariance
-  void InitPlane(const std::vector<pointWithCovMeta> &points, Plane *plane);
-
-  // only update plane normal, center and radius with new points
-  void UpdatePlane(const std::vector<pointWithCovMeta> &points, Plane *plane);
+  void InitPlane(const std::vector<PointWithCov> &points, Plane *plane);
 
   void InitOctoTree();
 
   void CutOctoTree();
 
-  void UpdateOctoTree(const pointWithCovMeta &pv);
-
-  void ExtractSurfelInfo(std::vector<pcl::PointCloud<PointType>> &cloud_multi_layers, std::vector<Surfel> &surfels, int cur_layer = 0);
+  void ExtractSurfelInfo(std::deque<Surfel::Ptr> &surfels, int cur_layer = 0);
 };
 
-void BuildVoxelMap(const std::vector<pointWithCovMeta> &input_points,
-                   const float voxel_size, const int max_layer,
-                   const std::vector<int> &layer_point_size,
-                   const int max_points_size, const int max_cov_points_size,
-                   const float                               planer_threshold,
-                   double                                    min_plane_likeness,
-                   std::unordered_map<VoxelLoc, OctoTree *> &feat_map);
+class GlobalMap {
+ public:
+  absl::flat_hash_map<VoxelLoc, OctoTree *> feat_map;
 
-void BuildSurfels(const pcl::PointCloud<hilti_ros::Point>::Ptr &cloud,
-                  std::vector<Surfel>                          &surfels);
+  ~GlobalMap() {
+    for (auto &e : feat_map) {
+      delete e.second;
+    }
+  }
+};
+
+void BuildVoxelMap(const std::vector<PointWithCov>           &input_points,
+                   const Vector3d                            &view_point,
+                   const float                                voxel_size,
+                   const int                                  max_layer,
+                   const std::vector<int>                    &layer_point_size,
+                   const float                                planer_threshold,
+                   double                                     min_plane_likeness,
+                   absl::flat_hash_map<VoxelLoc, OctoTree *> &feat_map);
+
+void BuildSurfels(const std::vector<hilti_ros::Point> &cloud,
+                  std::deque<Surfel::Ptr>             &surfels,
+                  GlobalMap                           &map);
+
+void PubPlaneMap(const absl::flat_hash_map<VoxelLoc, OctoTree *> &feat_map,
+                 const ros::Publisher                            &plane_map_pub);
+
+void PubSurfels(std::deque<Surfel::Ptr> surfels,
+                const ros::Publisher   &plane_map_pub);
 
 #endif

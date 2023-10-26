@@ -8,15 +8,18 @@
 #include <sensor_msgs/Imu.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <signal.h>
+#include <thread>
 
 #include "common/msg_conversion.h"
-#include "odometry/surfel_odometry.h"
+#include "odometry/lidar_odometry.h"
+#include "sensor/imu_resampler.h"
 
-DEFINE_bool(is_offline_mode, true, "Runtime mode: online or offline.");
-
+DEFINE_bool(enable_online_mode, false, "Enable online mode.");
 DEFINE_string(bag_filename, "/home/rick/Documents/raw_data/hilti/exp04_construction_upper_level.bag-filtered.bag", "Bag file to read in offline mode.");
+DEFINE_int32(imu_rate, 200, "IMU rate in Hz.");
 
-volatile sig_atomic_t g_signal_stop = 0;
+volatile sig_atomic_t         g_signal_stop = 0;
+std::shared_ptr<ImuResampler> g_imu_resampler;
 
 void signal_handler(int status) {
   g_signal_stop = 1;
@@ -25,18 +28,24 @@ void signal_handler(int status) {
 // DEFINE_string(config_filename, "", "Configuration file.");
 
 void HandleImuMessage(
-    const sensor_msgs::ImuConstPtr        &msg,
-    const std::shared_ptr<SurfelOdometry> &laser_odometry_handler) {
+    const sensor_msgs::ImuConstPtr       &msg,
+    const std::shared_ptr<LidarOdometry> &laser_odometry_handler) {
   ImuData imu_data;
-  imu_data.time                = FromROS(msg->header.stamp);
+  imu_data.timestamp           = msg->header.stamp.toSec();
   imu_data.linear_acceleration = FromROS(msg->linear_acceleration);
   imu_data.angular_velocity    = FromROS(msg->angular_velocity);
-  laser_odometry_handler->AddImuData(imu_data);
+
+  g_imu_resampler->AddImuData(imu_data);
+  auto resampled_imu_data = g_imu_resampler->AdvanceGetResampledImuData();
+  if (resampled_imu_data) {
+    // LOG(INFO) << "Resampled imu data: " << std::fixed << std::setprecision(6) << resampled_imu_data->timestamp;
+    laser_odometry_handler->AddImuData(*resampled_imu_data);
+  }
 }
 
 void HandleLidarMessage(
     const sensor_msgs::PointCloud2ConstPtr &msg,
-    const std::shared_ptr<SurfelOdometry>  &laser_odometry_handler) {
+    const std::shared_ptr<LidarOdometry>   &laser_odometry_handler) {
   pcl::PointCloud<hilti_ros::Point>::Ptr cloud(new pcl::PointCloud<hilti_ros::Point>);
   pcl::fromROSMsg(*msg, *cloud);
   laser_odometry_handler->AddLidarScan(cloud);
@@ -49,22 +58,28 @@ int main(int argc, char **argv) {
   google::ParseCommandLineFlags(&argc, &argv, true);
 
   // Set ROS node
-  ros::init(argc, argv, "nsf_loam_node");
+  ros::init(argc, argv, "wildcat_slam_node");
   ros::NodeHandle nh;
 
   signal(SIGINT, signal_handler);
 
-  CHECK_EQ(FLAGS_is_offline_mode, true);
-  CHECK_NE(FLAGS_bag_filename, "");
+  std::shared_ptr<LidarOdometry> so{new LidarOdometry()};
 
-  auto        so = std::make_shared<SurfelOdometry>(0.05, 800, 10);
-  Vector3d    lidar2imu_pos{-0.001, -0.00855, 0.055};
-  Quaterniond lidar2imu_rot{(Eigen::Matrix3d() << -5.32125e-08, -1, 0, -1, -5.32125e-08, -0, 0, 0, -1)
-                                .finished()};
-  so->SetExtrinsicLidar2Imu(Rigid3d{lidar2imu_pos, lidar2imu_rot});
+  g_imu_resampler.reset(new ImuResampler(FLAGS_imu_rate));
+  if (FLAGS_enable_online_mode) {
+    LOG(INFO) << "Using online mode ...";
+    auto imu_sub   = nh.subscribe<sensor_msgs::Imu>("/alphasense/imu", 10000, boost::bind(HandleImuMessage, _1, so));
+    auto lidar_sub = nh.subscribe<sensor_msgs::PointCloud2>("/hesai/pandar", 10000, boost::bind(HandleLidarMessage, _1, so));
 
-  if (FLAGS_is_offline_mode) {
+    while (ros::ok() && !g_signal_stop) {
+      ros::spinOnce();
+      std::this_thread::sleep_for(std::chrono::milliseconds(3));
+    }
+
+    LOG(INFO) << "Exit.";
+  } else {
     LOG(INFO) << "Using offline mode ...";
+    CHECK_NE(FLAGS_bag_filename, "");
     rosbag::Bag bag;
     bag.open(FLAGS_bag_filename);
     LOG(INFO) << "Reading bag file " << FLAGS_bag_filename << " ...";

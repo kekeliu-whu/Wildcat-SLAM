@@ -3,18 +3,10 @@
 #include <pcl/point_types.h>
 
 #include "common/rigid_transform.h"
-#include "common/time.h"
 
 using Vector3d    = Eigen::Vector3d;
 using Quaterniond = Eigen::Quaterniond;
-
-struct State {
-  double          timestamp;
-  Rigid3d         pose;
-  Eigen::Vector3d bias_a;
-  Eigen::Vector3d bias_g;
-  Eigen::Vector3d gravity;
-};
+using Matrix3d    = Eigen::Matrix3d;
 
 // clang-format off
 namespace hilti_ros {
@@ -37,9 +29,9 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(hilti_ros::Point,
 // clang-format on
 
 struct ImuData {
-  Time            time;
-  Eigen::Vector3d linear_acceleration;
-  Eigen::Vector3d angular_velocity;
+  double   timestamp;
+  Vector3d linear_acceleration;
+  Vector3d angular_velocity;
 };
 
 using PointType = hilti_ros::Point;

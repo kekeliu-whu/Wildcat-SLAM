@@ -1,0 +1,10 @@
+<launch>
+
+  <node pkg="wildcat_slam" type="wildcat_slam_node" name="wildcat_slam_node" output="screen" args="--log_dir=/tmp --enable_online_mode=true" />
+
+  <arg name="rviz" default="true" />
+  <group if="$(arg rviz)">
+      <node launch-prefix="nice" pkg="rviz" type="rviz" name="rviz" args="-d $(find wildcat_slam)/rviz/default.rviz" />
+  </group>
+
+</launch>

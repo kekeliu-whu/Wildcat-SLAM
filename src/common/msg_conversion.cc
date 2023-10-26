@@ -1,4 +1,5 @@
 #include "common/msg_conversion.h"
+#include "common/common.h"
 
 Vector3d FromROS(const geometry_msgs::Vector3_<std::allocator<void>> &p) {
   Vector3d v;

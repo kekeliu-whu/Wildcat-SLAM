@@ -4,6 +4,7 @@
 #include <geometry_msgs/PoseWithCovariance.h>
 #include <geometry_msgs/Vector3.h>
 
+#include "common/common.h"
 #include "common/rigid_transform.h"
 #include "common/time.h"
 

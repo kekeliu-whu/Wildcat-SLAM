@@ -17,12 +17,11 @@
 #ifndef LOAM_VELODYNE_RIGID_TRANSFORMER_H
 #define LOAM_VELODYNE_RIGID_TRANSFORMER_H
 
+#include <Eigen/Eigen>
+#include <Eigen/Geometry>
 #include <cmath>
 #include <iostream>
 #include <string>
-
-#include "Eigen/Core"
-#include "Eigen/Geometry"
 
 template <typename T>
 using Vector = Eigen::Matrix<T, 3, 1>;
@@ -127,7 +126,6 @@ std::ostream& operator<<(std::ostream& os, const Rigid3<T>& rigid) {
 using Rigid3d = Rigid3<double>;
 using Rigid3f = Rigid3<float>;
 
-#include "common/common.h"
 #include <pcl/point_cloud.h>
 
 template <typename T>
