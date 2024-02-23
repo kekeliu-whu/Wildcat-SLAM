@@ -41,7 +41,3 @@ Clone the repository and catkin_make.
 
 ## 3. License
 GPLv3.
-
-## 4. Related paper
-
-* Ramezani, M., Khosoussi, K., Catt, G., Moghadam, P., Williams, J., Borges, P., Pauling, F. and Kottege, N., 2022. Wildcat: Online continuous-time 3d lidar-inertial slam. arXiv preprint arXiv:2205.12595.
