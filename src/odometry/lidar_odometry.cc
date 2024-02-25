@@ -19,6 +19,40 @@
 
 namespace {
 
+class CubicBSplineSampleCorrector {
+ public:
+  CubicBSplineSampleCorrector(const std::deque<SampleState::Ptr> &sample_states) {
+    std::vector<double>   sample_timestamps;
+    std::vector<Vector3d> sample_rot;
+    std::vector<Vector3d> sample_pos;
+    for (auto &sample_state : sample_states) {
+      sample_timestamps.push_back(sample_state->timestamp);
+      sample_rot.push_back(sample_state->rot_cor);
+      sample_pos.push_back(sample_state->pos_cor);
+    }
+    rot_interp_.reset(new CubicBSplineInterpolator(sample_timestamps, sample_rot));
+    pos_interp_.reset(new CubicBSplineInterpolator(sample_timestamps, sample_pos));
+  }
+
+  bool GetCorr(double timestamp, Vector3d &rot_cor, Vector3d &pos_cor) {
+    CHECK(rot_interp_ && pos_interp_) << "Interpolator not initialized";
+    auto rot_cor_ptr = rot_interp_->Interp(timestamp);
+    auto pos_cor_ptr = pos_interp_->Interp(timestamp);
+    CHECK((rot_cor_ptr && pos_cor_ptr) || (!rot_cor_ptr && !pos_cor_ptr)) << "Interpolation failed";
+    if (rot_cor_ptr) {
+      rot_cor = *rot_cor_ptr;
+      pos_cor = *pos_cor_ptr;
+      return true;
+    } else {
+      return false;
+    }
+  }
+
+ private:
+  std::shared_ptr<CubicBSplineInterpolator> rot_interp_;
+  std::shared_ptr<CubicBSplineInterpolator> pos_interp_;
+};
+
 void PrintSurfelResiduals(const std::vector<ceres::ResidualBlockId> &residual_ids, ceres::Problem &problem) {
   std::vector<double>             residuals;
   double                          cost;
@@ -85,6 +119,24 @@ void PredictPoseOfNewImuState(
   i3.pos    = (i1.rot * (i1.acc - ba) + grav) * dt * dt + 2 * i2.pos - i1.pos;
 }
 
+/**
+ * @brief Build a sweep from points_buff
+ *
+ * Timestamp order: l_0 < l_1 < ... < l_{n-1} < lidar_end_time
+ *
+ * @param points_buff
+ * @param sweep_endtime
+ * @param sweep
+ */
+void BuildSweep(std::deque<hilti_ros::Point> &points_buff, double sweep_endtime, std::vector<hilti_ros::Point> &sweep) {
+  double start_time = points_buff.front().time;
+  sweep.clear();
+  while (!points_buff.empty() && points_buff.front().time < sweep_endtime) {
+    sweep.push_back(points_buff.front());
+    points_buff.pop_front();
+  }
+}
+
 void UndistortSweep(const std::vector<hilti_ros::Point> &sweep_in,
                     const std::deque<ImuState>          &imu_states,
                     std::vector<hilti_ros::Point>       &sweep_out) {
@@ -114,24 +166,6 @@ void UpdateSurfelPoses(const std::deque<ImuState> &imu_states, std::deque<Surfel
   }
 }
 
-/**
- * @brief Build a sweep from points_buff
- *
- * Timestamp order: l_0 < l_1 < ... < l_{n-1} < lidar_end_time
- *
- * @param points_buff
- * @param sweep_endtime
- * @param sweep
- */
-void BuildSweep(std::deque<hilti_ros::Point> &points_buff, double sweep_endtime, std::vector<hilti_ros::Point> &sweep) {
-  double start_time = points_buff.front().time;
-  sweep.clear();
-  while (!points_buff.empty() && points_buff.front().time < sweep_endtime) {
-    sweep.push_back(points_buff.front());
-    points_buff.pop_front();
-  }
-}
-
 void UpdateSamplePoses(std::deque<SampleState::Ptr> &sample_states) {
   for (auto &sample_state : sample_states) {
     sample_state->rot = Exp(sample_state->rot_cor) * sample_state->rot;
@@ -140,40 +174,6 @@ void UpdateSamplePoses(std::deque<SampleState::Ptr> &sample_states) {
     sample_state->pos_cor.setZero();
   }
 }
-
-class CubicBSplineSampleCorrector {
- public:
-  CubicBSplineSampleCorrector(const std::deque<SampleState::Ptr> &sample_states) {
-    std::vector<double>   sample_timestamps;
-    std::vector<Vector3d> sample_rot;
-    std::vector<Vector3d> sample_pos;
-    for (auto &sample_state : sample_states) {
-      sample_timestamps.push_back(sample_state->timestamp);
-      sample_rot.push_back(sample_state->rot_cor);
-      sample_pos.push_back(sample_state->pos_cor);
-    }
-    rot_interp_.reset(new CubicBSplineInterpolator(sample_timestamps, sample_rot));
-    pos_interp_.reset(new CubicBSplineInterpolator(sample_timestamps, sample_pos));
-  }
-
-  bool GetCorr(double timestamp, Vector3d &rot_cor, Vector3d &pos_cor) {
-    CHECK(rot_interp_ && pos_interp_) << "Interpolator not initialized";
-    auto rot_cor_ptr = rot_interp_->Interp(timestamp);
-    auto pos_cor_ptr = pos_interp_->Interp(timestamp);
-    CHECK((rot_cor_ptr && pos_cor_ptr) || (!rot_cor_ptr && !pos_cor_ptr)) << "Interpolation failed";
-    if (rot_cor_ptr) {
-      rot_cor = *rot_cor_ptr;
-      pos_cor = *pos_cor_ptr;
-      return true;
-    } else {
-      return false;
-    }
-  }
-
- private:
-  std::shared_ptr<CubicBSplineInterpolator> rot_interp_;
-  std::shared_ptr<CubicBSplineInterpolator> pos_interp_;
-};
 
 /**
  * @brief Update imu poses by sample state corrections
@@ -531,11 +531,6 @@ void LidarOdometry::AddLidarScan(const pcl::PointCloud<hilti_ros::Point>::Ptr &m
   }
 
   ShrinkToFit(sample_states_sld_win_, imu_states_sld_win_, surfels_sld_win_, config_.sliding_window_duration);
-
-  static int i = 0;
-  if (++i == 30) {
-    exit(EXIT_FAILURE);
-  }
 
   PubSurfels(surfels_sld_win_, pub_plane_map_);
   {
