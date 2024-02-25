@@ -31,7 +31,7 @@ struct LioConfig {
   ///////////////////// Sliding window preprocess parameters //////////////////////
   double imu_rate                = 200;   // imu rate in Hz
   double sample_dt               = 0.08;  // sample time in seconds
-  double fixed_window_duration   = 3.0;   // fixed window duration in seconds // todo kk change duration to size
+  double fixed_window_duration   = 20.0;  // fixed window duration in seconds // todo change duration to size
   double sliding_window_duration = 6.0;   // sliding window duration in seconds
   double sweep_duration          = 0.5;   // sweep duration in seconds
 

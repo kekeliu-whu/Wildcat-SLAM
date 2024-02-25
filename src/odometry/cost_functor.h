@@ -9,7 +9,7 @@
 /**
  * @brief s1 s2 is two corresponding surfels
  *
- * 1. Timestamp order: s1 < sp1l <= s1 < sp1r
+ * 1. Timestamp order: s1 < sp2l <= s2 < sp2r
  * 2. s1 s2 are not in adjacent sampled intervals
  *
  */
@@ -36,7 +36,7 @@ struct SurfelMatchUnaryFactor : public ceres::SizedCostFunction<1, 12, 12> {
     CHECK_GE(factor2, 0);
     CHECK_LE(factor2, 1);
 
-    residuals[0] = weight_ * norm_.dot(s1_->CenterInBody() - Exp(r_s2) * s2_->rot * s2_->CenterInBody() - s2_->pos - t_s2);
+    residuals[0] = weight_ * norm_.dot(s1_->GetCenterInWorld() - Exp(r_s2) * s2_->rot * s2_->CenterInBody() - t_s2 - s2_->pos);
 
     if (jacobians) {
       Eigen::Matrix<double, 1, 12> jacobian_s2;
@@ -45,12 +45,12 @@ struct SurfelMatchUnaryFactor : public ceres::SizedCostFunction<1, 12, 12> {
       jacobian_s2.block<1, 3>(0, 3) = -weight_ * norm_.transpose();
 
       if (jacobians[0]) {
-        Eigen::Map<Eigen::Matrix<double, 1, 12, Eigen::RowMajor>> jacobian_sp2l{jacobians[2]};
+        Eigen::Map<Eigen::Matrix<double, 1, 12, Eigen::RowMajor>> jacobian_sp2l{jacobians[0]};
         jacobian_sp2l = jacobian_s2 * (1 - factor2);
       }
 
       if (jacobians[1]) {
-        Eigen::Map<Eigen::Matrix<double, 1, 12, Eigen::RowMajor>> jacobian_sp2r{jacobians[3]};
+        Eigen::Map<Eigen::Matrix<double, 1, 12, Eigen::RowMajor>> jacobian_sp2r{jacobians[1]};
         jacobian_sp2r = jacobian_s2 * factor2;
       }
     }

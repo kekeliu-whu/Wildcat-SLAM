@@ -89,7 +89,7 @@ class OctoTree {
   OctoTree                 *leaves_[8];
   double                    voxel_center_[3];
   float                     quarter_length_;
-  Vector3d                  view_point_;  // todo kk set plane norm by trajectory instead of one point
+  Vector3d                  view_point_;  // todo set plane norm by trajectory instead of one point
 
   float  planer_threshold_;
   double min_plane_likeness_;

@@ -44,7 +44,9 @@ class LidarOdometry {
    */
   bool SyncHeadingMsgs();
 
-  void BuildLidarResiduals(const std::vector<SurfelCorrespondence> &surfel_corrs, ceres::Problem &problem, std::vector<ceres::ResidualBlockId> &residual_ids);
+  void BuildSldWinLidarResiduals(const std::vector<SurfelCorrespondence> &surfel_corrs, ceres::Problem &problem, std::vector<ceres::ResidualBlockId> &residual_ids);
+
+  void BuildFixWinLidarResiduals(const std::vector<SurfelCorrespondence> &surfel_corrs, ceres::Problem &problem, std::vector<ceres::ResidualBlockId> &residual_ids);
 
   void BuildImuResiduals(const std::deque<ImuState> &imu_states, ceres::Problem &problem, std::vector<ceres::ResidualBlockId> &residual_ids);
 
@@ -52,6 +54,7 @@ class LidarOdometry {
   LioConfig config_;
 
   std::deque<Surfel::Ptr>      surfels_sld_win_;
+  std::deque<Surfel::Ptr>      surfels_fix_win_;
   std::deque<SampleState::Ptr> sample_states_sld_win_;
   std::deque<ImuState>         imu_states_sld_win_;
 

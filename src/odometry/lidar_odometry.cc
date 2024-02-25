@@ -53,7 +53,10 @@ class CubicBSplineSampleCorrector {
   std::shared_ptr<CubicBSplineInterpolator> pos_interp_;
 };
 
-void PrintSurfelResiduals(const std::vector<ceres::ResidualBlockId> &residual_ids, ceres::Problem &problem) {
+void PrintSurfelResiduals(const std::vector<ceres::ResidualBlockId> &residual_ids, ceres::Problem &problem, const std::string &window_type) {
+  if (residual_ids.empty()) {
+    return;
+  }
   std::vector<double>             residuals;
   double                          cost;
   ceres::Problem::EvaluateOptions options;
@@ -64,7 +67,7 @@ void PrintSurfelResiduals(const std::vector<ceres::ResidualBlockId> &residual_id
   for (auto &e : residuals) {
     hist.Add(e);
   }
-  LOG(INFO) << "Surfel residuals, cost: " << cost << ", dist: " << hist.ToString(10);
+  LOG(INFO) << window_type << " Surfel residuals, cost: " << cost << ", dist: " << hist.ToString(10);
 }
 
 void PrintImuResiduals(const std::vector<ceres::ResidualBlockId> &residual_ids, ceres::Problem &problem) {
@@ -218,30 +221,37 @@ void UpdateImuPoses(const std::deque<SampleState::Ptr> &sample_states,
  *
  * @param sample_states
  * @param imu_states
- * @param surfels
+ * @param surfels_sld_win
+ * @param surfels_fix_win
  * @param window_duration
  */
 void ShrinkToFit(std::deque<SampleState::Ptr> &sample_states,
                  std::deque<ImuState>         &imu_states,
-                 std::deque<Surfel::Ptr>      &surfels,
-                 double                        window_duration) {
-  if (sample_states.empty() || sample_states.back()->timestamp - sample_states.front()->timestamp <= window_duration) {
+                 std::deque<Surfel::Ptr>      &surfels_sld_win,
+                 std::deque<Surfel::Ptr>      &surfels_fix_win,
+                 double                        sld_win_duration,
+                 double                        fix_win_duration) {
+  if (sample_states.empty() || sample_states.back()->timestamp - sample_states.front()->timestamp <= sld_win_duration) {
     return;
   }
-  while (sample_states.back()->timestamp - sample_states.front()->timestamp > window_duration) {
+  while (sample_states.back()->timestamp - sample_states.front()->timestamp > sld_win_duration) {
     sample_states.pop_front();
   }
   while (imu_states.front().timestamp < sample_states.front()->timestamp) {
     imu_states.pop_front();
   }
-  while (surfels.front()->timestamp < imu_states.front().timestamp) {
-    surfels.pop_front();
+  while (surfels_sld_win.front()->timestamp < imu_states.front().timestamp) {
+    surfels_fix_win.push_front(surfels_sld_win.front());
+    surfels_sld_win.pop_front();
+  }
+  while (surfels_fix_win.back()->timestamp - surfels_fix_win.back()->timestamp > fix_win_duration) {
+    surfels_fix_win.pop_back();
   }
 }
 
 }  // namespace
 
-void LidarOdometry::BuildLidarResiduals(const std::vector<SurfelCorrespondence> &surfel_corrs, ceres::Problem &problem, std::vector<ceres::ResidualBlockId> &residual_ids) {
+void LidarOdometry::BuildSldWinLidarResiduals(const std::vector<SurfelCorrespondence> &surfel_corrs, ceres::Problem &problem, std::vector<ceres::ResidualBlockId> &residual_ids) {
   for (const auto &surfel_corr : surfel_corrs) {
     CHECK_LT(surfel_corr.s1->timestamp, surfel_corr.s2->timestamp) << std::fixed << std::setprecision(6) << surfel_corr.s1->timestamp << " " << surfel_corr.s2->timestamp;  // bug: disorder happens
 
@@ -257,7 +267,7 @@ void LidarOdometry::BuildLidarResiduals(const std::vector<SurfelCorrespondence> 
     auto sp2l = *(sp2r_it - 1);
     auto sp2r = *(sp2r_it);
 
-    auto loss_function = new ceres::CauchyLoss(0.4);  // todo kk set cauchy loss param
+    auto loss_function = new ceres::CauchyLoss(0.4);  // todo set cauchy loss param
     if (sp1r->timestamp < sp2l->timestamp) {
       auto residual_id = problem.AddResidualBlock(
           new SurfelMatchBinaryFactor<0>(surfel_corr.s1, sp1l, sp1r, surfel_corr.s2, sp2l, sp2r),
@@ -267,7 +277,7 @@ void LidarOdometry::BuildLidarResiduals(const std::vector<SurfelCorrespondence> 
           sp2l->data_cor,
           sp2r->data_cor);
       residual_ids.push_back(residual_id);
-    } else if (sp1r->timestamp == sp2l->timestamp) {
+    } else if (sp1r == sp2l) {
       auto residual_id = problem.AddResidualBlock(
           new SurfelMatchBinaryFactor<1>(surfel_corr.s1, sp1l, sp1r, surfel_corr.s2, sp2l, sp2r),
           loss_function,
@@ -283,6 +293,26 @@ void LidarOdometry::BuildLidarResiduals(const std::vector<SurfelCorrespondence> 
           sp1r->data_cor);
       residual_ids.push_back(residual_id);
     }
+  }
+}
+
+void LidarOdometry::BuildFixWinLidarResiduals(const std::vector<SurfelCorrespondence> &surfel_corrs, ceres::Problem &problem, std::vector<ceres::ResidualBlockId> &residual_ids) {
+  for (const auto &surfel_corr : surfel_corrs) {
+    CHECK_LT(surfel_corr.s1->timestamp, surfel_corr.s2->timestamp) << std::fixed << std::setprecision(6) << surfel_corr.s1->timestamp << " " << surfel_corr.s2->timestamp;  // bug: disorder happens
+
+    auto sp2r_it = std::upper_bound(sample_states_sld_win_.begin(), sample_states_sld_win_.end(), surfel_corr.s2->timestamp, [](double lhs, const SampleState::Ptr &rhs) { return lhs < rhs->timestamp; });
+    CHECK(sp2r_it != sample_states_sld_win_.begin());
+    CHECK(sp2r_it != sample_states_sld_win_.end());
+    auto sp2l = *(sp2r_it - 1);
+    auto sp2r = *(sp2r_it);
+
+    auto loss_function = new ceres::CauchyLoss(0.4);  // todo set cauchy loss param
+    auto residual_id   = problem.AddResidualBlock(
+        new SurfelMatchUnaryFactor(surfel_corr.s1, surfel_corr.s2, sp2l, sp2r),
+        loss_function,
+        sp2l->data_cor,
+        sp2r->data_cor);
+    residual_ids.push_back(residual_id);
   }
 }
 
@@ -309,7 +339,7 @@ void LidarOdometry::BuildImuResiduals(const std::deque<ImuState> &imu_states, ce
                            config_.gyroscope_random_walk_cost_weight,
                            config_.accelerometer_random_walk_cost_weight,
                            1 / config_.imu_rate, sample_states_sld_win_.back()->grav),
-          new ceres::TrivialLoss(),  // todo kk use loss function
+          new ceres::TrivialLoss(),  // todo use loss function
           sp1->data_cor,
           sp2->data_cor);
       residual_ids.push_back(residual_id);
@@ -480,7 +510,7 @@ void LidarOdometry::AddLidarScan(const pcl::PointCloud<hilti_ros::Point>::Ptr &m
 
   // 2. integrate IMU poses in windows
   PredictImuStatesAndSampleStates(sweep_endtime);
-  sweep_endtime = sample_states_sld_win_.back()->timestamp;  // todo kk here we can make sure all points/surfels are before sweep_endtime
+  sweep_endtime = sample_states_sld_win_.back()->timestamp;  // todo here we can make sure all points/surfels are before sweep_endtime
 
   BuildSweep(points_buff_, sweep_endtime, sweep);
   LOG(INFO) << std::fixed << std::setprecision(6) << "Build sweep " << sweep_id_ << " with points_" << sweep.size() << "[" << sweep.front().time << "," << sweep.back().time << "] by sweep_endtime " << sweep_endtime;
@@ -497,19 +527,25 @@ void LidarOdometry::AddLidarScan(const pcl::PointCloud<hilti_ros::Point>::Ptr &m
   UpdateSurfelPoses(imu_states_sld_win_, surfels_sld_win_);
 
   for (int iter_num = 0; iter_num < config_.outer_iter_num_max; ++iter_num) {
-    std::vector<SurfelCorrespondence> surfel_corrs;
+    std::vector<SurfelCorrespondence> surfel_corrs_sld, surfel_corrs_fix;
 
-    KnnSurfelMatcher window_surfel_matcher;
-    window_surfel_matcher.BuildIndex(surfels_sld_win_);
-    window_surfel_matcher.Match(surfels_sld_win_, surfel_corrs);
+    KnnSurfelMatcher surfel_matcher_sld_win;
+    surfel_matcher_sld_win.BuildIndex(surfels_sld_win_);
+    surfel_matcher_sld_win.Match(surfels_sld_win_, surfel_corrs_sld);
+
+    KnnSurfelMatcher surfel_matcher_fix_win;
+    surfel_matcher_fix_win.BuildIndex(surfels_fix_win_);
+    surfel_matcher_fix_win.Match(surfels_sld_win_, surfel_corrs_fix);
 
     // 5. sovle poses in windows
     ceres::Problem                      problem;
-    std::vector<ceres::ResidualBlockId> surfel_residual_ids, imu_residual_ids;
-    BuildLidarResiduals(surfel_corrs, problem, surfel_residual_ids);
+    std::vector<ceres::ResidualBlockId> surfel_sld_win_residual_ids, surfel_fix_win_residual_ids, imu_residual_ids;
+    BuildSldWinLidarResiduals(surfel_corrs_sld, problem, surfel_sld_win_residual_ids);
+    BuildFixWinLidarResiduals(surfel_corrs_fix, problem, surfel_fix_win_residual_ids);
     BuildImuResiduals(imu_states_sld_win_, problem, imu_residual_ids);
 
-    PrintSurfelResiduals(surfel_residual_ids, problem);
+    PrintSurfelResiduals(surfel_sld_win_residual_ids, problem, "Sliding Window");
+    PrintSurfelResiduals(surfel_fix_win_residual_ids, problem, "Fixed Window");
     PrintImuResiduals(imu_residual_ids, problem);
 
     ceres::Solver::Options option;
@@ -517,7 +553,11 @@ void LidarOdometry::AddLidarScan(const pcl::PointCloud<hilti_ros::Point>::Ptr &m
     option.linear_solver_type           = ceres::SPARSE_NORMAL_CHOLESKY;
     option.max_num_iterations           = config_.inner_iter_num_max;
     ceres::Solver::Summary summary;
-    problem.SetParameterization(sample_states_sld_win_[0]->data_cor, new ceres::SubsetParameterization(12, {3, 4, 5}));  // todo kk fix pos of first sample state
+    static auto            g_first_sample_state = sample_states_sld_win_[0];
+    if (sample_states_sld_win_[0] == g_first_sample_state) {
+      LOG(INFO) << "Optimize with fixing position of the first sample state.";
+      problem.SetParameterization(sample_states_sld_win_[0]->data_cor, new ceres::SubsetParameterization(12, {3, 4, 5}));
+    }
     ceres::Solve(option, &problem, &summary);
     LOG(INFO) << summary.BriefReport();
 
@@ -525,12 +565,19 @@ void LidarOdometry::AddLidarScan(const pcl::PointCloud<hilti_ros::Point>::Ptr &m
     UpdateSurfelPoses(imu_states_sld_win_, surfels_sld_win_);
     UpdateSamplePoses(sample_states_sld_win_);
 
-    PrintSurfelResiduals(surfel_residual_ids, problem);
+    PrintSurfelResiduals(surfel_sld_win_residual_ids, problem, "Sliding Window");
+    PrintSurfelResiduals(surfel_fix_win_residual_ids, problem, "Fixed Window");
     PrintImuResiduals(imu_residual_ids, problem);
     PrintSampleStates(sample_states_sld_win_);
   }
 
-  ShrinkToFit(sample_states_sld_win_, imu_states_sld_win_, surfels_sld_win_, config_.sliding_window_duration);
+  ShrinkToFit(
+      sample_states_sld_win_,
+      imu_states_sld_win_,
+      surfels_sld_win_,
+      surfels_fix_win_,
+      config_.sliding_window_duration,
+      config_.fixed_window_duration);
 
   PubSurfels(surfels_sld_win_, pub_plane_map_);
   {

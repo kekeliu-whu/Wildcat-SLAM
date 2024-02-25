@@ -28,7 +28,7 @@ class KnnSurfelMatcher {
   std::vector<FloatType> ToVector(const Surfel::Ptr &surfel);
 
  private:
-  std::deque<Surfel::Ptr> surfels_;
+  std::deque<Surfel::Ptr> target_surfels_;
 
   std::vector<FloatType>      cloud_;
   std::shared_ptr<FLANNIndex> index_;

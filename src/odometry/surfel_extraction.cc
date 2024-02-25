@@ -20,7 +20,7 @@ void ClusterSurfels(
   std::vector<std::vector<PointWithCov>> cluster_points;
   cluster_points.push_back({points[0]});
   for (auto i = 1; i < points.size(); ++i) {
-    // todo kk magic number
+    // todo magic number
     if (points[i].timestamp - cluster_points.back().back().timestamp > 0.05) {
       cluster_points.push_back({points[i]});
     } else {
@@ -323,7 +323,7 @@ void BuildSurfels(const std::vector<hilti_ros::Point> &cloud, std::deque<Surfel:
     points.push_back(np);
   }
 
-  // todo kk magic number
+  // todo magic number
   BuildVoxelMap(points, Vector3d::Zero(), 0.8, 2, {20, 20, 20, 20}, 0.01, 0.1, map.feat_map);
 
   std::vector<pcl::PointCloud<PointType>> cloud_surfel_multi_layers(4);
