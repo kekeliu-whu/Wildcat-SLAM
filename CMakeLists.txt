@@ -91,7 +91,6 @@ set(
     src/common/histogram.cc
     src/odometry/lidar_odometry.cc
     src/odometry/surfel_extraction.cc
-    src/odometry/feature_map.cc
     src/odometry/knn_surfel_matcher.cc
 )
 list(APPEND PROJECT_SRCS ${ALL_PROTO_SRCS})

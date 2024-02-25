@@ -11,7 +11,6 @@
 
 #include "common/histogram.h"
 #include "common/utils.h"
-#include "feature_map.h"
 #include "knn_surfel_matcher.h"
 #include "odometry/cost_functor.h"
 #include "odometry/lidar_odometry.h"
@@ -500,13 +499,9 @@ void LidarOdometry::AddLidarScan(const pcl::PointCloud<hilti_ros::Point>::Ptr &m
   for (int iter_num = 0; iter_num < config_.outer_iter_num_max; ++iter_num) {
     std::vector<SurfelCorrespondence> surfel_corrs;
 
-    if (0) {
-      FeatureMap::Create(surfels_sld_win_, 3, 0.8, surfel_corrs);
-    } else {
-      KnnSurfelMatcher window_surfel_matcher;
-      window_surfel_matcher.BuildIndex(surfels_sld_win_);
-      window_surfel_matcher.Match(surfels_sld_win_, surfel_corrs);
-    }
+    KnnSurfelMatcher window_surfel_matcher;
+    window_surfel_matcher.BuildIndex(surfels_sld_win_);
+    window_surfel_matcher.Match(surfels_sld_win_, surfel_corrs);
 
     // 5. sovle poses in windows
     ceres::Problem                      problem;
