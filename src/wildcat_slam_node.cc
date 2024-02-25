@@ -68,7 +68,7 @@ int main(int argc, char **argv) {
   g_imu_resampler.reset(new ImuResampler(FLAGS_imu_rate));
   if (FLAGS_enable_online_mode) {
     LOG(INFO) << "Using online mode ...";
-    auto imu_sub   = nh.subscribe<sensor_msgs::Imu>("/alphasense/imu", 10000, boost::bind(HandleImuMessage, _1, so));
+    auto imu_sub   = nh.subscribe<sensor_msgs::Imu>("/alphasense/imu", 100000, boost::bind(HandleImuMessage, _1, so));
     auto lidar_sub = nh.subscribe<sensor_msgs::PointCloud2>("/hesai/pandar", 10000, boost::bind(HandleLidarMessage, _1, so));
 
     while (ros::ok() && !g_signal_stop) {

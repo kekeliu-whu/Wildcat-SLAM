@@ -10,6 +10,9 @@ This is an unofficial demonstrative implentation of Wildcat SLAM which is descri
 }
 ```
 
+![pic1](pics/surfels_in_sliding_window.jpg)
+![pic2](pics/point_cloud_accumulated.jpg)
+
 ## 1. Prerequisites
 ### 1.1 **Ubuntu** and **ROS**
 Recommend: Ubuntu 20.04 and [ROS Noetic](http://wiki.ros.org/ROS/Installation).
