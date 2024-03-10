@@ -5,12 +5,15 @@
 #include <sensor_msgs/PointCloud2.h>
 #include <deque>
 
+#include "io/odometry_io.h"
 #include "odometry/lio_config.h"
 #include "surfel_extraction.h"
 
 class LidarOdometry {
  public:
   LidarOdometry();
+
+  ~LidarOdometry();
 
   /**
    * @brief Add raw imu measurements to queue
@@ -66,4 +69,6 @@ class LidarOdometry {
   ros::Publisher  pub_scan_in_imu_frame_;
 
   int sweep_id_ = 0;
+
+  OdometryIO io_;
 };

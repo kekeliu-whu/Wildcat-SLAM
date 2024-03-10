@@ -32,13 +32,13 @@ struct LioConfig {
   double imu_rate                = 200;   // imu rate in Hz
   double sample_dt               = 0.08;  // sample time in seconds
   double fixed_window_duration   = 20.0;  // fixed window duration in seconds // todo change duration to size
-  double sliding_window_duration = 6.0;   // sliding window duration in seconds
+  double sliding_window_duration = 5.0;   // sliding window duration in seconds
   double sweep_duration          = 0.5;   // sweep duration in seconds
 
   ///////////////////// Sliding windows optimization parameters //////////////////////
   double gravity_norm                            = 9.81;
   int    outer_iter_num_max                      = 1;
-  int    inner_iter_num_max                      = 100;
+  int    inner_iter_num_max                      = 50;
   double gyroscope_noise_density_cost_weight     = 1 / (gyroscope_noise_density * sqrt(imu_rate)) * imu_factor_weight;
   double accelerometer_noise_density_cost_weight = 1 / (accelerometer_noise_density * sqrt(imu_rate)) * imu_factor_weight;
   double gyroscope_random_walk_cost_weight       = 1 / (gyroscope_random_walk / sqrt(imu_rate)) * imu_factor_weight;

@@ -224,13 +224,15 @@ void UpdateImuPoses(const std::deque<SampleState::Ptr> &sample_states,
  * @param surfels_sld_win
  * @param surfels_fix_win
  * @param window_duration
+ * @param io
  */
 void ShrinkToFit(std::deque<SampleState::Ptr> &sample_states,
                  std::deque<ImuState>         &imu_states,
                  std::deque<Surfel::Ptr>      &surfels_sld_win,
                  std::deque<Surfel::Ptr>      &surfels_fix_win,
                  double                        sld_win_duration,
-                 double                        fix_win_duration) {
+                 double                        fix_win_duration,
+                 OdometryIO                   &io) {
   if (sample_states.empty() || sample_states.back()->timestamp - sample_states.front()->timestamp <= sld_win_duration) {
     return;
   }
@@ -238,6 +240,8 @@ void ShrinkToFit(std::deque<SampleState::Ptr> &sample_states,
     sample_states.pop_front();
   }
   while (imu_states.front().timestamp < sample_states.front()->timestamp) {
+    auto &imu_state = imu_states.front();
+    io.AddOdom(imu_state.timestamp, imu_state.rot, imu_state.pos);
     imu_states.pop_front();
   }
   while (surfels_sld_win.front()->timestamp < imu_states.front().timestamp) {
@@ -252,6 +256,10 @@ void ShrinkToFit(std::deque<SampleState::Ptr> &sample_states,
 }  // namespace
 
 void LidarOdometry::BuildSldWinLidarResiduals(const std::vector<SurfelCorrespondence> &surfel_corrs, ceres::Problem &problem, std::vector<ceres::ResidualBlockId> &residual_ids) {
+  Eigen::Matrix<int, Eigen::Dynamic, Eigen::Dynamic> correlation_matrix;
+  correlation_matrix.resize(sample_states_sld_win_.size() - 1, sample_states_sld_win_.size() - 1);
+  correlation_matrix.setZero();
+
   for (const auto &surfel_corr : surfel_corrs) {
     CHECK_LT(surfel_corr.s1->timestamp, surfel_corr.s2->timestamp) << std::fixed << std::setprecision(6) << surfel_corr.s1->timestamp << " " << surfel_corr.s2->timestamp;  // bug: disorder happens
 
@@ -293,7 +301,18 @@ void LidarOdometry::BuildSldWinLidarResiduals(const std::vector<SurfelCorrespond
           sp1r->data_cor);
       residual_ids.push_back(residual_id);
     }
+
+    int sp1l_idx = std::distance(sample_states_sld_win_.begin(), sp1r_it) - 1;
+    int sp2l_idx = std::distance(sample_states_sld_win_.begin(), sp2r_it) - 1;
+    correlation_matrix(sp1l_idx, sp2l_idx) += 1;
+    correlation_matrix(sp2l_idx, sp1l_idx) += 1;
   }
+  // for (int i = 0; i < correlation_matrix.rows(); ++i) {
+  //   for (int j = 0; j < correlation_matrix.cols(); ++j) {
+  //     std::cout << correlation_matrix(i, j) << " ";
+  //   }
+  //   std::cout << std::endl;
+  // }
 }
 
 void LidarOdometry::BuildFixWinLidarResiduals(const std::vector<SurfelCorrespondence> &surfel_corrs, ceres::Problem &problem, std::vector<ceres::ResidualBlockId> &residual_ids) {
@@ -550,8 +569,9 @@ void LidarOdometry::AddLidarScan(const pcl::PointCloud<hilti_ros::Point>::Ptr &m
 
     ceres::Solver::Options option;
     option.minimizer_progress_to_stdout = true;
-    option.linear_solver_type           = ceres::SPARSE_NORMAL_CHOLESKY;
+    option.linear_solver_type           = ceres::DENSE_SCHUR;
     option.max_num_iterations           = config_.inner_iter_num_max;
+    option.num_threads                  = 8;
     ceres::Solver::Summary summary;
     static auto            g_first_sample_state = sample_states_sld_win_[0];
     if (sample_states_sld_win_[0] == g_first_sample_state) {
@@ -577,7 +597,8 @@ void LidarOdometry::AddLidarScan(const pcl::PointCloud<hilti_ros::Point>::Ptr &m
       surfels_sld_win_,
       surfels_fix_win_,
       config_.sliding_window_duration,
-      config_.fixed_window_duration);
+      config_.fixed_window_duration,
+      io_);
 
   PubSurfels(surfels_sld_win_, pub_plane_map_);
   {
@@ -610,7 +631,13 @@ void LidarOdometry::AddImuData(const ImuData &msg) {
   this->imu_buff_.push_back(msg_new);
 }
 
-LidarOdometry::LidarOdometry() {
+LidarOdometry::LidarOdometry() : io_("/tmp") {
   pub_plane_map_         = nh_.advertise<visualization_msgs::MarkerArray>("/current_planes", 10);
   pub_scan_in_imu_frame_ = nh_.advertise<sensor_msgs::PointCloud2>("/scan_in_imu_frame", 10);
+}
+
+LidarOdometry::~LidarOdometry() {
+  for (auto &e : imu_states_sld_win_) {
+    io_.AddOdom(e.timestamp, e.rot, e.pos);
+  }
 }
