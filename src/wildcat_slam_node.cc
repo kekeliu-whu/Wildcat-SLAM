@@ -7,7 +7,7 @@
 #include <rosbag/view.h>
 #include <sensor_msgs/Imu.h>
 #include <sensor_msgs/PointCloud2.h>
-#include <signal.h>
+#include <csignal>
 #include <thread>
 
 #include "common/msg_conversion.h"

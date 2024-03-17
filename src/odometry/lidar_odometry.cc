@@ -5,7 +5,6 @@
 #include <absl/container/flat_hash_map.h>
 #include <ceres/ceres.h>
 #include <glog/logging.h>
-#include <pcl/io/ply_io.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <tf/transform_broadcaster.h>
 
@@ -27,8 +26,8 @@ class CubicBSplineSampleCorrector {
     std::vector<Vector3d> sample_pos;
     for (auto &sample_state : sample_states) {
       sample_timestamps.push_back(sample_state->timestamp);
-      sample_rot.push_back(sample_state->rot_cor);
-      sample_pos.push_back(sample_state->pos_cor);
+      sample_rot.emplace_back(sample_state->rot_cor);
+      sample_pos.emplace_back(sample_state->pos_cor);
     }
     rot_interp_.reset(new CubicBSplineInterpolator(sample_timestamps, sample_rot));
     pos_interp_.reset(new CubicBSplineInterpolator(sample_timestamps, sample_pos));
@@ -132,7 +131,6 @@ void PredictPoseOfNewImuState(
  * @param sweep
  */
 void BuildSweep(std::deque<hilti_ros::Point> &points_buff, double sweep_endtime, std::vector<hilti_ros::Point> &sweep) {
-  double start_time = points_buff.front().time;
   sweep.clear();
   while (!points_buff.empty() && points_buff.front().time < sweep_endtime) {
     sweep.push_back(points_buff.front());
