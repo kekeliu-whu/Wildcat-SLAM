@@ -92,6 +92,7 @@ set(
     src/odometry/lidar_odometry.cc
     src/odometry/surfel_extraction.cc
     src/odometry/knn_surfel_matcher.cc
+    src/odometry/cost_functor.cc
 )
 list(APPEND PROJECT_SRCS ${ALL_PROTO_SRCS})
 

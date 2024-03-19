@@ -350,13 +350,14 @@ void LidarOdometry::BuildImuResiduals(const std::deque<ImuState> &imu_states, ce
     auto sp2    = *(sp2_it);
     if (sp2_it == sample_states_sld_win_.end() - 1) {
       auto residual_id = problem.AddResidualBlock(
-          ImuFactor<1>::Create(i1, i2, i3,
-                               sp1->timestamp, sp2->timestamp, DBL_MAX,
-                               config_.gyroscope_noise_density_cost_weight,
-                               config_.accelerometer_noise_density_cost_weight,
-                               config_.gyroscope_random_walk_cost_weight,
-                               config_.accelerometer_random_walk_cost_weight,
-                               1 / config_.imu_rate, sample_states_sld_win_.back()->grav),
+          ImuFactorWith2SampleStates::Create(
+              i1, i2, i3,
+              sp1->timestamp, sp2->timestamp,
+              config_.gyroscope_noise_density_cost_weight,
+              config_.accelerometer_noise_density_cost_weight,
+              config_.gyroscope_random_walk_cost_weight,
+              config_.accelerometer_random_walk_cost_weight,
+              1 / config_.imu_rate, sample_states_sld_win_.back()->grav),
           new ceres::TrivialLoss(),  // todo use loss function
           sp1->data_cor,
           sp2->data_cor);
@@ -364,13 +365,14 @@ void LidarOdometry::BuildImuResiduals(const std::deque<ImuState> &imu_states, ce
     } else {
       auto sp3         = *(sp2_it + 1);
       auto residual_id = problem.AddResidualBlock(
-          ImuFactor<0>::Create(i1, i2, i3,
-                               sp1->timestamp, sp2->timestamp, sp3->timestamp,
-                               config_.gyroscope_noise_density_cost_weight,
-                               config_.accelerometer_noise_density_cost_weight,
-                               config_.gyroscope_random_walk_cost_weight,
-                               config_.accelerometer_random_walk_cost_weight,
-                               1 / config_.imu_rate, sample_states_sld_win_.back()->grav),
+          ImuFactorWith3SampleStates::Create(
+              i1, i2, i3,
+              sp1->timestamp, sp2->timestamp, sp3->timestamp,
+              config_.gyroscope_noise_density_cost_weight,
+              config_.accelerometer_noise_density_cost_weight,
+              config_.gyroscope_random_walk_cost_weight,
+              config_.accelerometer_random_walk_cost_weight,
+              1 / config_.imu_rate, sample_states_sld_win_.back()->grav),
           new ceres::TrivialLoss(),
           sp1->data_cor,
           sp2->data_cor,
