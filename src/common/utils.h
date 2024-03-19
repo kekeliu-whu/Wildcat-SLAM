@@ -21,12 +21,18 @@ Eigen::Matrix<typename Base::Scalar, 3, 3> Hat(const Base& v) {
   return res;
 }
 
+template <typename T>
+inline Eigen::Quaternion<T> Exp(const Eigen::Matrix<T, 3, 1>& v) {
+  return Sophus::SO3<T>::exp(v).unit_quaternion();
+}
+
 inline Quaterniond Exp(const Vector3d& v) {
   return Sophus::SO3d::exp(v).unit_quaternion();
 }
 
-inline Vector3d Log(const Quaterniond& q) {
-  return Sophus::SO3d(q).log();
+template <typename T>
+inline Eigen::Matrix<T, 3, 1> Log(const Eigen::Quaternion<T>& q) {
+  return Sophus::SO3<T>(q).log();
 }
 
 template <typename Base>

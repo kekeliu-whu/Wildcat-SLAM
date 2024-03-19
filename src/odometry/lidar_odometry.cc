@@ -13,6 +13,7 @@
 #include "knn_surfel_matcher.h"
 #include "odometry/cost_functor.h"
 #include "odometry/lidar_odometry.h"
+#include "odometry/local_parameterization_sample_state.h"
 #include "odometry/spline_interpolation.h"
 #include "surfel_extraction.h"
 
@@ -276,7 +277,7 @@ void LidarOdometry::BuildSldWinLidarResiduals(const std::vector<SurfelCorrespond
     auto loss_function = new ceres::CauchyLoss(0.4);  // todo set cauchy loss param
     if (sp1r->timestamp < sp2l->timestamp) {
       auto residual_id = problem.AddResidualBlock(
-          new SurfelMatchBinaryFactor<0>(surfel_corr.s1, sp1l, sp1r, surfel_corr.s2, sp2l, sp2r),
+          SurfelMatchBinaryFactor::Create(surfel_corr.s1, sp1l, sp1r, surfel_corr.s2, sp2l, sp2r),
           loss_function,
           sp1l->data_cor,
           sp1r->data_cor,
@@ -285,7 +286,7 @@ void LidarOdometry::BuildSldWinLidarResiduals(const std::vector<SurfelCorrespond
       residual_ids.push_back(residual_id);
     } else if (sp1r == sp2l) {
       auto residual_id = problem.AddResidualBlock(
-          new SurfelMatchBinaryFactor<1>(surfel_corr.s1, sp1l, sp1r, surfel_corr.s2, sp2l, sp2r),
+          SurfelMatchBinaryFactor::Create(surfel_corr.s1, sp1l, sp1r, surfel_corr.s2, sp2r),
           loss_function,
           sp1l->data_cor,
           sp1r->data_cor,
@@ -293,7 +294,7 @@ void LidarOdometry::BuildSldWinLidarResiduals(const std::vector<SurfelCorrespond
       residual_ids.push_back(residual_id);
     } else {
       auto residual_id = problem.AddResidualBlock(
-          new SurfelMatchBinaryFactor<2>(surfel_corr.s1, sp1l, sp1r, surfel_corr.s2, sp2l, sp2r),
+          SurfelMatchBinaryFactor::Create(surfel_corr.s1, sp1l, sp1r, surfel_corr.s2),
           loss_function,
           sp1l->data_cor,
           sp1r->data_cor);
@@ -325,7 +326,7 @@ void LidarOdometry::BuildFixWinLidarResiduals(const std::vector<SurfelCorrespond
 
     auto loss_function = new ceres::CauchyLoss(0.4);  // todo set cauchy loss param
     auto residual_id   = problem.AddResidualBlock(
-        new SurfelMatchUnaryFactor(surfel_corr.s1, surfel_corr.s2, sp2l, sp2r),
+        SurfelMatchUnaryFactor::Create(surfel_corr.s1, surfel_corr.s2, sp2l, sp2r),
         loss_function,
         sp2l->data_cor,
         sp2r->data_cor);
@@ -349,13 +350,13 @@ void LidarOdometry::BuildImuResiduals(const std::deque<ImuState> &imu_states, ce
     auto sp2    = *(sp2_it);
     if (sp2_it == sample_states_sld_win_.end() - 1) {
       auto residual_id = problem.AddResidualBlock(
-          new ImuFactor<1>(i1, i2, i3,
-                           sp1->timestamp, sp2->timestamp, DBL_MAX,
-                           config_.gyroscope_noise_density_cost_weight,
-                           config_.accelerometer_noise_density_cost_weight,
-                           config_.gyroscope_random_walk_cost_weight,
-                           config_.accelerometer_random_walk_cost_weight,
-                           1 / config_.imu_rate, sample_states_sld_win_.back()->grav),
+          ImuFactor<1>::Create(i1, i2, i3,
+                               sp1->timestamp, sp2->timestamp, DBL_MAX,
+                               config_.gyroscope_noise_density_cost_weight,
+                               config_.accelerometer_noise_density_cost_weight,
+                               config_.gyroscope_random_walk_cost_weight,
+                               config_.accelerometer_random_walk_cost_weight,
+                               1 / config_.imu_rate, sample_states_sld_win_.back()->grav),
           new ceres::TrivialLoss(),  // todo use loss function
           sp1->data_cor,
           sp2->data_cor);
@@ -363,13 +364,13 @@ void LidarOdometry::BuildImuResiduals(const std::deque<ImuState> &imu_states, ce
     } else {
       auto sp3         = *(sp2_it + 1);
       auto residual_id = problem.AddResidualBlock(
-          new ImuFactor<0>(i1, i2, i3,
-                           sp1->timestamp, sp2->timestamp, sp3->timestamp,
-                           config_.gyroscope_noise_density_cost_weight,
-                           config_.accelerometer_noise_density_cost_weight,
-                           config_.gyroscope_random_walk_cost_weight,
-                           config_.accelerometer_random_walk_cost_weight,
-                           1 / config_.imu_rate, sample_states_sld_win_.back()->grav),
+          ImuFactor<0>::Create(i1, i2, i3,
+                               sp1->timestamp, sp2->timestamp, sp3->timestamp,
+                               config_.gyroscope_noise_density_cost_weight,
+                               config_.accelerometer_noise_density_cost_weight,
+                               config_.gyroscope_random_walk_cost_weight,
+                               config_.accelerometer_random_walk_cost_weight,
+                               1 / config_.imu_rate, sample_states_sld_win_.back()->grav),
           new ceres::TrivialLoss(),
           sp1->data_cor,
           sp2->data_cor,
@@ -572,9 +573,13 @@ void LidarOdometry::AddLidarScan(const pcl::PointCloud<hilti_ros::Point>::Ptr &m
     option.num_threads                  = 8;
     ceres::Solver::Summary summary;
     static auto            g_first_sample_state = sample_states_sld_win_[0];
-    if (sample_states_sld_win_[0] == g_first_sample_state) {
-      LOG(INFO) << "Optimize with fixing position of the first sample state.";
-      problem.SetParameterization(sample_states_sld_win_[0]->data_cor, new ceres::SubsetParameterization(12, {3, 4, 5}));
+    for (auto &sample_state : sample_states_sld_win_) {
+      if (sample_state == g_first_sample_state) {
+        LOG(INFO) << "Optimize with fixing position of the first sample state.";
+        problem.SetParameterization(sample_state->data_cor, LocalParameterizationSampleStateFixPos::Create());
+      } else {
+        problem.SetParameterization(sample_state->data_cor, LocalParameterizationSampleState::Create());
+      }
     }
     ceres::Solve(option, &problem, &summary);
     LOG(INFO) << summary.BriefReport();
