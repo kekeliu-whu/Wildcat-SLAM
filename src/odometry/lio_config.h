@@ -33,7 +33,8 @@ struct LioConfig {
   double sample_dt               = 0.1;   // sample time in seconds
   double fixed_window_duration   = 20.0;  // fixed window duration in seconds // todo change duration to size
   double sliding_window_duration = 5.0;   // sliding window duration in seconds
-  double sweep_duration          = 0.5;   // sweep duration in seconds
+  int    sample_num_per_sweep    = 5;
+  double sweep_duration          = sample_num_per_sweep * sample_dt;  // sweep duration in seconds
 
   ///////////////////// Sliding windows optimization parameters //////////////////////
   double gravity_norm                            = 9.81;

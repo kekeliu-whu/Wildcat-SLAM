@@ -142,7 +142,7 @@ void BuildVoxelMap(const std::vector<PointWithCov>           &input_points,
                    double                                     min_plane_likeness,
                    absl::flat_hash_map<VoxelLoc, OctoTree *> &feat_map);
 
-void BuildSurfels(const std::vector<hilti_ros::Point> &cloud,
+void BuildSurfels(const std::deque<hilti_ros::Point> &cloud,
                   std::deque<Surfel::Ptr>             &surfels,
                   GlobalMap                           &map);
 

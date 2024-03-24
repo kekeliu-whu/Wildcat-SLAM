@@ -8,7 +8,7 @@ SurfelMatchUnaryFactor::SurfelMatchUnaryFactor(
     std::shared_ptr<Surfel>      s2,
     std::shared_ptr<SampleState> sp2l,
     std::shared_ptr<SampleState> sp2r) : s1_(s1), sp2l_(sp2l), sp2r_(sp2r), s2_(s2) {
-  Matrix3d                                cov = s1_->GetCovarianceInWorld() + s2_->GetCovarianceInWorld();
+  Matrix3d                                cov = s1_->covariance + s2_->covariance;
   Eigen::SelfAdjointEigenSolver<Matrix3d> es(cov);
   weight_ = 1 / sqrt(pow(0.05 / 6, 2) + es.eigenvalues()[0]);
   norm_   = es.eigenvectors().col(0);
@@ -16,18 +16,17 @@ SurfelMatchUnaryFactor::SurfelMatchUnaryFactor(
 
 template <typename T>
 bool SurfelMatchUnaryFactor::operator()(const T *sp2l_ptr, const T *sp2r_ptr, T *residuals) const {
-  Eigen::Map<const Eigen::Matrix<T, 3, 1>> r_sp2l{sp2l_ptr};
-  Eigen::Map<const Eigen::Matrix<T, 3, 1>> t_sp2l{sp2l_ptr + 3};
-  Eigen::Map<const Eigen::Matrix<T, 3, 1>> r_sp2r{sp2r_ptr};
-  Eigen::Map<const Eigen::Matrix<T, 3, 1>> t_sp2r{sp2r_ptr + 3};
-  double                                   factor2 = (s2_->timestamp - sp2l_->timestamp) / (sp2r_->timestamp - sp2l_->timestamp);
-  Eigen::Matrix<T, 3, 1>                   r_s2    = (1 - factor2) * r_sp2l + factor2 * r_sp2r;
-  Eigen::Matrix<T, 3, 1>                   t_s2    = (1 - factor2) * t_sp2l + factor2 * t_sp2r;
+  Eigen::Map<const Eigen::Matrix<T, 3, 1>> r_sp2l_cor{sp2l_ptr};
+  Eigen::Map<const Eigen::Matrix<T, 3, 1>> t_sp2l_cor{sp2l_ptr + 3};
+  Eigen::Map<const Eigen::Matrix<T, 3, 1>> r_sp2r_cor{sp2r_ptr};
+  Eigen::Map<const Eigen::Matrix<T, 3, 1>> t_sp2r_cor{sp2r_ptr + 3};
+  double                                   factor2  = (s2_->timestamp - sp2l_->timestamp) / (sp2r_->timestamp - sp2l_->timestamp);
+  Eigen::Matrix<T, 3, 1>                   r_s2_cor = (1 - factor2) * r_sp2l_cor + factor2 * r_sp2r_cor;
+  Eigen::Matrix<T, 3, 1>                   t_s2_cor = (1 - factor2) * t_sp2l_cor + factor2 * t_sp2r_cor;
   CHECK_GE(factor2, 0);
   CHECK_LE(factor2, 1);
 
-  residuals[0] = weight_ * norm_.cast<T>().dot(s1_->GetCenterInWorld().cast<T>() - Exp(r_s2) * s2_->rot.cast<T>() * s2_->CenterInBody().cast<T>() - t_s2 - s2_->pos.cast<T>());
-
+  residuals[0] = weight_ * norm_.cast<T>().dot(s1_->center.cast<T>() - Exp(r_s2_cor) * s2_->center.cast<T>() - t_s2_cor);
   return true;
 }
 
@@ -36,7 +35,7 @@ ceres::CostFunction *SurfelMatchUnaryFactor::Create(std::shared_ptr<Surfel> s1, 
 }
 
 SurfelMatchBinaryFactor::SurfelMatchBinaryFactor(std::shared_ptr<Surfel> s1, std::shared_ptr<SampleState> sp1l, std::shared_ptr<SampleState> sp1r, std::shared_ptr<Surfel> s2, std::shared_ptr<SampleState> sp2l, std::shared_ptr<SampleState> sp2r) : s1_(s1), sp1l_(sp1l), sp1r_(sp1r), s2_(s2), sp2l_(sp2l), sp2r_(sp2r) {
-  Matrix3d                                cov = s1_->GetCovarianceInWorld() + s2_->GetCovarianceInWorld();
+  Matrix3d                                cov = s1_->covariance + s2_->covariance;
   Eigen::SelfAdjointEigenSolver<Matrix3d> es(cov);
   weight_ = 1 / sqrt(pow(0.05 / 6, 2) + es.eigenvalues()[0]);
   norm_   = es.eigenvectors().col(0);
@@ -64,23 +63,23 @@ void SurfelMatchBinaryFactor::Helper(const T *sp1l_ptr, const T *sp1r_ptr, const
   Eigen::Map<const Eigen::Matrix<T, 3, 1>> t_sp1l{sp1l_ptr + 3};
   Eigen::Map<const Eigen::Matrix<T, 3, 1>> r_sp1r{sp1r_ptr};
   Eigen::Map<const Eigen::Matrix<T, 3, 1>> t_sp1r{sp1r_ptr + 3};
-  double                                   factor1 = (s1_->timestamp - sp1l_->timestamp) / (sp1r_->timestamp - sp1l_->timestamp);
-  Eigen::Matrix<T, 3, 1>                   r_s1    = (1 - factor1) * r_sp1l + factor1 * r_sp1r;
-  Eigen::Matrix<T, 3, 1>                   t_s1    = (1 - factor1) * t_sp1l + factor1 * t_sp1r;
+  double                                   factor1  = (s1_->timestamp - sp1l_->timestamp) / (sp1r_->timestamp - sp1l_->timestamp);
+  Eigen::Matrix<T, 3, 1>                   r_s1_cor = (1 - factor1) * r_sp1l + factor1 * r_sp1r;
+  Eigen::Matrix<T, 3, 1>                   t_s1_cor = (1 - factor1) * t_sp1l + factor1 * t_sp1r;
   CHECK_GE(factor1, 0);
   CHECK_LE(factor1, 1);
 
-  Eigen::Map<const Eigen::Matrix<T, 3, 1>> r_sp2l{sp2l_ptr};
-  Eigen::Map<const Eigen::Matrix<T, 3, 1>> t_sp2l{sp2l_ptr + 3};
-  Eigen::Map<const Eigen::Matrix<T, 3, 1>> r_sp2r{sp2r_ptr};
-  Eigen::Map<const Eigen::Matrix<T, 3, 1>> t_sp2r{sp2r_ptr + 3};
-  double                                   factor2 = (s2_->timestamp - sp2l_->timestamp) / (sp2r_->timestamp - sp2l_->timestamp);
-  Eigen::Matrix<T, 3, 1>                   r_s2    = (1 - factor2) * r_sp2l + factor2 * r_sp2r;
-  Eigen::Matrix<T, 3, 1>                   t_s2    = (1 - factor2) * t_sp2l + factor2 * t_sp2r;
+  Eigen::Map<const Eigen::Matrix<T, 3, 1>> r_sp2l_cor{sp2l_ptr};
+  Eigen::Map<const Eigen::Matrix<T, 3, 1>> t_sp2l_cor{sp2l_ptr + 3};
+  Eigen::Map<const Eigen::Matrix<T, 3, 1>> r_sp2r_cor{sp2r_ptr};
+  Eigen::Map<const Eigen::Matrix<T, 3, 1>> t_sp2r_cor{sp2r_ptr + 3};
+  double                                   factor2  = (s2_->timestamp - sp2l_->timestamp) / (sp2r_->timestamp - sp2l_->timestamp);
+  Eigen::Matrix<T, 3, 1>                   r_s2_cor = (1 - factor2) * r_sp2l_cor + factor2 * r_sp2r_cor;
+  Eigen::Matrix<T, 3, 1>                   t_s2_cor = (1 - factor2) * t_sp2l_cor + factor2 * t_sp2r_cor;
   CHECK_GE(factor2, 0);
   CHECK_LE(factor2, 1);
 
-  residuals[0] = weight_ * norm_.cast<T>().dot(Exp(r_s1) * s1_->rot.cast<T>() * s1_->CenterInBody().cast<T>() + t_s1 + s1_->pos.cast<T>() - Exp(r_s2) * s2_->rot.cast<T>() * s2_->CenterInBody().cast<T>() - t_s2 - s2_->pos.cast<T>());
+  residuals[0] = weight_ * norm_.cast<T>().dot(Exp(r_s1_cor) * s1_->center.cast<T>() + t_s1_cor - Exp(r_s2_cor) * s2_->center.cast<T>() - t_s2_cor);
 }
 
 template <typename T>
@@ -113,12 +112,16 @@ void Helper(
     double          dt_,
     double weight_gyr_, double weight_acc_, double weight_bg_, double weight_ba_,
     T *residuals) {
-  Eigen::Matrix<T, 3, 1> gyr_est = Log((Exp(r_i1_cor) * i1_.rot.cast<T>()).conjugate() * Exp(r_i2_cor) * i2_.rot.cast<T>()) / dt_;
-  Eigen::Matrix<T, 3, 1> acc_est = ((t_i3_cor + i3_.pos.cast<T>()) + (t_i1_cor + i1_.pos.cast<T>()) - 2.0 * (t_i2_cor + i2_.pos.cast<T>())) / (dt_ * dt_);
+  auto R_i1_cor = Exp(r_i1_cor);
+  auto R_i2_cor = Exp(r_i2_cor);
+  auto R_i3_cor = Exp(r_i3_cor);
+
+  Eigen::Matrix<T, 3, 1> gyr_est = Log((R_i1_cor * i1_.rot.cast<T>()).conjugate() * R_i2_cor * i2_.rot.cast<T>()) / dt_;
+  Eigen::Matrix<T, 3, 1> acc_est = ((t_i3_cor + R_i3_cor * i3_.pos.cast<T>()) + (t_i1_cor + R_i1_cor * i1_.pos.cast<T>()) - 2.0 * (t_i2_cor + R_i2_cor * i2_.pos.cast<T>())) / (dt_ * dt_);
 
   Eigen::Map<Vector12<T>> r{residuals};
   r.template block<3, 1>(0, 0) = weight_gyr_ * ((i1_.gyr.cast<T>() + i2_.gyr.cast<T>()) / 2.0 - gyr_est - bg_i1);
-  r.template block<3, 1>(3, 0) = weight_acc_ * ((Exp(r_i1_cor) * i1_.rot.cast<T>()) * (i1_.acc.cast<T>() - ba_i1) - acc_est + gravity_.cast<T>());
+  r.template block<3, 1>(3, 0) = weight_acc_ * ((R_i1_cor * i1_.rot.cast<T>()) * (i1_.acc.cast<T>() - ba_i1) - acc_est + gravity_.cast<T>());
   r.template block<3, 1>(6, 0) = weight_bg_ * (bg_i1 - bg_i2);
   r.template block<3, 1>(9, 0) = weight_ba_ * (ba_i1 - ba_i2);
 }

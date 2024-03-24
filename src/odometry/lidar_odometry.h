@@ -5,9 +5,10 @@
 #include <sensor_msgs/PointCloud2.h>
 #include <deque>
 
+#include "common/common.h"
 #include "io/odometry_io.h"
 #include "odometry/lio_config.h"
-#include "surfel_extraction.h"
+#include "odometry/surfel.h"
 
 class LidarOdometry {
  public:
@@ -37,7 +38,7 @@ class LidarOdometry {
    *
    * @param end_time
    */
-  void PredictImuStatesAndSampleStates(double end_time);
+  void PredictImuStatesAndSampleStates();
 
   /**
    * @brief Remove heading imus and points to make sure they are in sync
@@ -63,10 +64,12 @@ class LidarOdometry {
 
   std::deque<ImuData>          imu_buff_;
   std::deque<hilti_ros::Point> points_buff_;
+  std::deque<hilti_ros::Point> points_buff_sld_win_;
 
   ros::NodeHandle nh_;
   ros::Publisher  pub_plane_map_;
   ros::Publisher  pub_scan_in_imu_frame_;
+  ros::Publisher  pub_imu_path_;
 
   int sweep_id_ = 0;
 

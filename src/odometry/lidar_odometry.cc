@@ -5,6 +5,7 @@
 #include <absl/container/flat_hash_map.h>
 #include <ceres/ceres.h>
 #include <glog/logging.h>
+#include <nav_msgs/Path.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <tf/transform_broadcaster.h>
 
@@ -95,7 +96,7 @@ void PrintImuResiduals(const std::vector<ceres::ResidualBlockId> &residual_ids, 
 
 void PrintSampleStates(const std::deque<SampleState::Ptr> &states) {
   for (auto &e : states) {
-    LOG(INFO) << "\np:  " << e->pos.transpose() << "\nDp: " << e->pos_cor.transpose() << "\nq:  " << e->rot.coeffs().transpose() << "\nbg: " << e->bg.transpose() << "\nba: " << e->ba.transpose();
+    LOG(INFO) << "\npos_cor: " << e->pos_cor.transpose() << "\nrot_cor:  " << e->rot_cor.transpose() << "\nbg: " << e->bg.transpose() << "\nba: " << e->ba.transpose();
   }
 }
 
@@ -131,7 +132,7 @@ void PredictPoseOfNewImuState(
  * @param sweep_endtime
  * @param sweep
  */
-void BuildSweep(std::deque<hilti_ros::Point> &points_buff, double sweep_endtime, std::vector<hilti_ros::Point> &sweep) {
+void BuildSweep(std::deque<hilti_ros::Point> &points_buff, double sweep_endtime, std::deque<hilti_ros::Point> &sweep) {
   sweep.clear();
   while (!points_buff.empty() && points_buff.front().time < sweep_endtime) {
     sweep.push_back(points_buff.front());
@@ -139,10 +140,11 @@ void BuildSweep(std::deque<hilti_ros::Point> &points_buff, double sweep_endtime,
   }
 }
 
-void UndistortSweep(const std::vector<hilti_ros::Point> &sweep_in,
-                    const std::deque<ImuState>          &imu_states,
-                    std::vector<hilti_ros::Point>       &sweep_out) {
-  sweep_out.clear();
+void UndistortSweep(const std::deque<hilti_ros::Point> &sweep_in,
+                    const std::deque<ImuState>         &imu_states,
+                    std::deque<hilti_ros::Point>       &sweep_out) {
+  std::deque<hilti_ros::Point> sweep_out_real;
+  sweep_out_real.clear();
   for (auto &pt : sweep_in) {
     auto it  = std::lower_bound(imu_states.begin(), imu_states.end(), pt.time, [](const ImuState &a, auto b) { return a.timestamp < b; });
     auto idx = it - imu_states.begin();
@@ -152,8 +154,9 @@ void UndistortSweep(const std::vector<hilti_ros::Point> &sweep_in,
     Quaterniond rot         = imu_states[idx - 1].rot.slerp(factor, imu_states[idx].rot);
     auto        new_pt      = pt;
     new_pt.getVector3fMap() = (rot * new_pt.getVector3fMap().cast<double>() + pos).cast<float>();
-    sweep_out.push_back(new_pt);
+    sweep_out_real.push_back(new_pt);
   }
+  sweep_out = sweep_out_real;
 }
 
 void UpdateSurfelPoses(const std::deque<ImuState> &imu_states, std::deque<Surfel::Ptr> &surfels) {
@@ -170,8 +173,6 @@ void UpdateSurfelPoses(const std::deque<ImuState> &imu_states, std::deque<Surfel
 
 void UpdateSamplePoses(std::deque<SampleState::Ptr> &sample_states) {
   for (auto &sample_state : sample_states) {
-    sample_state->rot = Exp(sample_state->rot_cor) * sample_state->rot;
-    sample_state->pos = sample_state->pos_cor + sample_state->pos;
     sample_state->rot_cor.setZero();
     sample_state->pos_cor.setZero();
   }
@@ -194,7 +195,7 @@ void UpdateImuPoses(const std::deque<SampleState::Ptr> &sample_states,
     bool     interp_ok = corrector.GetCorr(imu_state.timestamp, rot_cor, pos_cor);
     if (interp_ok) {
       imu_state.rot = Exp(rot_cor) * imu_state.rot;
-      imu_state.pos = pos_cor + imu_state.pos;
+      imu_state.pos = pos_cor + Exp(rot_cor) * imu_state.pos;
 
       if (corrected_first_idx == -1) corrected_first_idx = i;
       corrected_last_idx = i;
@@ -226,27 +227,40 @@ void UpdateImuPoses(const std::deque<SampleState::Ptr> &sample_states,
  * @param io
  */
 void ShrinkToFit(std::deque<SampleState::Ptr> &sample_states,
-                 std::deque<ImuState>         &imu_states,
+                 std::deque<ImuState>         &imu_states_sld_win,
+                 std::deque<ImuState>         &imu_states_shift_out,
+                 std::deque<hilti_ros::Point> &points_buff_sld_win,
+                 std::deque<hilti_ros::Point> &points_buff_shift_out,
                  std::deque<Surfel::Ptr>      &surfels_sld_win,
                  std::deque<Surfel::Ptr>      &surfels_fix_win,
                  double                        sld_win_duration,
-                 double                        fix_win_duration,
-                 OdometryIO                   &io) {
+                 double                        fix_win_duration) {
   if (sample_states.empty() || sample_states.back()->timestamp - sample_states.front()->timestamp <= sld_win_duration) {
     return;
   }
+  // shift out sample states
   while (sample_states.back()->timestamp - sample_states.front()->timestamp > sld_win_duration) {
     sample_states.pop_front();
   }
-  while (imu_states.front().timestamp < sample_states.front()->timestamp) {
-    auto &imu_state = imu_states.front();
-    io.AddOdom(imu_state.timestamp, imu_state.rot, imu_state.pos);
-    imu_states.pop_front();
+  // shift out imu states
+  while (imu_states_sld_win.front().timestamp < sample_states.front()->timestamp) {
+    imu_states_shift_out.push_back(imu_states_sld_win.front());
+    imu_states_sld_win.pop_front();
   }
-  while (surfels_sld_win.front()->timestamp < imu_states.front().timestamp) {
-    surfels_fix_win.push_front(surfels_sld_win.front());
+  // shift out sld win surfels into fix win
+  while (true) {
+    points_buff_shift_out.push_back(points_buff_sld_win.front());
+    points_buff_sld_win.pop_front();
+    if (points_buff_sld_win.front().time > imu_states_sld_win.front().timestamp) {
+      break;
+    }
+  }
+  // shift out sld win points
+  while (surfels_sld_win.front()->timestamp < imu_states_sld_win.front().timestamp) {
+    surfels_fix_win.push_back(surfels_sld_win.front());
     surfels_sld_win.pop_front();
   }
+  // shift out fix win
   while (surfels_fix_win.back()->timestamp - surfels_fix_win.back()->timestamp > fix_win_duration) {
     surfels_fix_win.pop_back();
   }
@@ -382,7 +396,7 @@ void LidarOdometry::BuildImuResiduals(const std::deque<ImuState> &imu_states, ce
   }
 }
 
-void LidarOdometry::PredictImuStatesAndSampleStates(double end_time) {
+void LidarOdometry::PredictImuStatesAndSampleStates() {
   // 1. try to initialize imu states and sample states
   CHECK_GE(imu_buff_.size(), 2);
   auto        dt           = 1 / config_.imu_rate;
@@ -410,8 +424,6 @@ void LidarOdometry::PredictImuStatesAndSampleStates(double end_time) {
     ss->ba.setZero();
     ss->bg.setZero();
     ss->grav = -config_.gravity_norm * imu_states_sld_win_.front().acc.normalized();
-    ss->rot  = imu_states_sld_win_.front().rot;
-    ss->pos  = imu_states_sld_win_.front().pos;
     sample_states_sld_win_.push_back(ss);
 
     init_sld_win = true;
@@ -419,13 +431,24 @@ void LidarOdometry::PredictImuStatesAndSampleStates(double end_time) {
 
   auto   sample_states_old_size     = sample_states_sld_win_.size();
   double sample_states_old_lasttime = sample_states_sld_win_.back()->timestamp;
-  int    sample_states_add_size     = (end_time - sample_states_old_lasttime) / config_.sample_dt;
-  double sample_states_add_lasttime = sample_states_old_lasttime + config_.sample_dt * sample_states_add_size;
+  auto   ba                         = sample_states_sld_win_.back()->ba;
+  auto   bg                         = sample_states_sld_win_.back()->bg;
+  auto   grav                       = sample_states_sld_win_.back()->grav;
+
+  // 3. add more sample states
+  for (int i = 1; i <= config_.sample_num_per_sweep; ++i) {
+    double timestamp = sample_states_old_lasttime + i * config_.sample_dt;
+
+    SampleState::Ptr ss(new SampleState);
+    ss->timestamp = timestamp;
+    ss->ba        = ba;
+    ss->bg        = bg;
+    ss->grav      = grav;
+    sample_states_sld_win_.push_back(ss);
+  }
+  LOG(INFO) << std::fixed << std::setprecision(6) << "Adding sample states_" << sample_states_sld_win_.size() - sample_states_old_size << "(" << sample_states_old_lasttime << "," << sample_states_sld_win_.back()->timestamp << "]";
 
   // 2. predict imu states
-  auto ba   = sample_states_sld_win_.back()->ba;
-  auto bg   = sample_states_sld_win_.back()->bg;
-  auto grav = sample_states_sld_win_.back()->grav;
   while (!imu_buff_.empty()) {
     int size = imu_states_sld_win_.size();
 
@@ -440,38 +463,11 @@ void LidarOdometry::PredictImuStatesAndSampleStates(double end_time) {
 
     imu_states_sld_win_.push_back(imu_state);
 
-    if (imu_state.timestamp >= sample_states_add_lasttime) {
+    if (imu_state.timestamp >= sample_states_sld_win_.back()->timestamp) {
       // ensure that we have enough imu states
       break;
     }
   }
-
-  // 3. add more sample states
-  for (int i = 1; i <= sample_states_add_size; ++i) {
-    double timestamp = sample_states_old_lasttime + i * config_.sample_dt;
-
-    SampleState::Ptr ss(new SampleState);
-    ss->timestamp = timestamp;
-    ss->ba        = ba;
-    ss->bg        = bg;
-    ss->grav      = grav;
-
-    auto it  = std::lower_bound(imu_states_sld_win_.begin(), imu_states_sld_win_.end(), timestamp, [&](const ImuState &a, double b) {
-      return a.timestamp < b;
-    });
-    auto idx = it - imu_states_sld_win_.begin();
-
-    CHECK_NE(idx, 0);
-    CHECK_NE(idx, imu_states_sld_win_.size());
-
-    double factor = (timestamp - imu_states_sld_win_[idx - 1].timestamp) / (imu_states_sld_win_[idx].timestamp - imu_states_sld_win_[idx - 1].timestamp);
-    ss->rot       = imu_states_sld_win_[idx - 1].rot.slerp(factor, imu_states_sld_win_[idx].rot);
-    ss->pos       = (1 - factor) * imu_states_sld_win_[idx - 1].pos + factor * imu_states_sld_win_[idx].pos;
-    CHECK_GE(factor, 0);
-    CHECK_LE(factor, 1);
-    sample_states_sld_win_.push_back(ss);
-  }
-  LOG(INFO) << std::fixed << std::setprecision(6) << "Adding sample states_" << sample_states_sld_win_.size() - sample_states_old_size << "(" << sample_states_old_lasttime << "," << sample_states_sld_win_.back()->timestamp << "]";
 }
 
 bool LidarOdometry::SyncHeadingMsgs() {
@@ -520,23 +516,25 @@ void LidarOdometry::AddLidarScan(const pcl::PointCloud<hilti_ros::Point>::Ptr &m
   }
 
   // 1. collect scan to sweep
-  std::vector<hilti_ros::Point> sweep;
-  auto                          sweep_endtime = points_buff_.front().time + config_.sweep_duration;
-  if (points_buff_.back().time < sweep_endtime || imu_buff_.empty() ||
-      imu_buff_.back().timestamp < sweep_endtime) {
+  std::deque<hilti_ros::Point> sweep;
+
+  auto sweep_endtime_for_check = points_buff_.front().time + config_.sweep_duration + 0.2;
+  if (points_buff_.back().time < sweep_endtime_for_check || imu_buff_.empty() ||
+      imu_buff_.back().timestamp < sweep_endtime_for_check) {
     // LOG(INFO) << "Waiting to construct a sweep: " << points_buff_.back().time - points_buff_.front().time;
     return;
   }
 
   // 2. integrate IMU poses in windows
-  PredictImuStatesAndSampleStates(sweep_endtime);
-  sweep_endtime = sample_states_sld_win_.back()->timestamp;  // todo here we can make sure all points/surfels are before sweep_endtime
+  PredictImuStatesAndSampleStates();
+  double sweep_endtime = sample_states_sld_win_.back()->timestamp;  // todo here we can make sure all points/surfels are before sweep_endtime
 
   BuildSweep(points_buff_, sweep_endtime, sweep);
+  points_buff_sld_win_.insert(points_buff_sld_win_.end(), sweep.begin(), sweep.end());
   LOG(INFO) << std::fixed << std::setprecision(6) << "Build sweep " << sweep_id_ << " with points_" << sweep.size() << "[" << sweep.front().time << "," << sweep.back().time << "] by sweep_endtime " << sweep_endtime;
 
   // 3. undistort sweep by IMU poses
-  std::vector<hilti_ros::Point> sweep_undistorted;
+  std::deque<hilti_ros::Point> sweep_undistorted;
   UndistortSweep(sweep, imu_states_sld_win_, sweep_undistorted);
 
   // 4. extract surfels and add to windows, the first time surfels will be add to global map
@@ -596,22 +594,31 @@ void LidarOdometry::AddLidarScan(const pcl::PointCloud<hilti_ros::Point>::Ptr &m
     PrintSampleStates(sample_states_sld_win_);
   }
 
+  std::deque<hilti_ros::Point> points_buff_shift_out;
+  std::deque<ImuState>         imu_states_shift_out;
+  auto                         imu_states_shift_out_full = imu_states_sld_win_;  // here we copy the imu buffer to undistort the shift out points
   ShrinkToFit(
       sample_states_sld_win_,
       imu_states_sld_win_,
+      imu_states_shift_out,
+      points_buff_sld_win_,
+      points_buff_shift_out,
       surfels_sld_win_,
       surfels_fix_win_,
       config_.sliding_window_duration,
-      config_.fixed_window_duration,
-      io_);
+      config_.fixed_window_duration);
+
+  for (auto &e : imu_states_shift_out) {
+    io_.AddOdom(e.timestamp, e.rot, e.pos);
+  }
 
   PubSurfels(surfels_sld_win_, pub_plane_map_);
-  {
-    std::vector<hilti_ros::Point> sweep_undistorted_final;
-    UndistortSweep(sweep, imu_states_sld_win_, sweep_undistorted_final);
-    sensor_msgs::PointCloud2          msg;
+  if (!points_buff_shift_out.empty()) {
+    sensor_msgs::PointCloud2     msg;
+    std::deque<hilti_ros::Point> points_buff_shift_out_world;
+    UndistortSweep(points_buff_shift_out, imu_states_shift_out_full, points_buff_shift_out_world);
     pcl::PointCloud<hilti_ros::Point> cloud;
-    for (auto &e : sweep_undistorted_final) {
+    for (auto &e : points_buff_shift_out_world) {
       cloud.push_back(e);
     }
     pcl::toROSMsg(cloud, msg);
@@ -622,9 +629,28 @@ void LidarOdometry::AddLidarScan(const pcl::PointCloud<hilti_ros::Point>::Ptr &m
   {
     static tf::TransformBroadcaster br;
     tf::Transform                   transform;
-    transform.setOrigin(tf::Vector3(sample_states_sld_win_.back()->pos[0], sample_states_sld_win_.back()->pos[1], sample_states_sld_win_.back()->pos[2]));
-    transform.setRotation(tf::Quaternion(sample_states_sld_win_.back()->rot.x(), sample_states_sld_win_.back()->rot.y(), sample_states_sld_win_.back()->rot.z(), sample_states_sld_win_.back()->rot.w()));
-    br.sendTransform(tf::StampedTransform(transform, ros::Time().fromSec(sample_states_sld_win_.back()->timestamp), "world", "imu_link"));
+    transform.setOrigin(tf::Vector3(imu_states_sld_win_.back().pos[0], imu_states_sld_win_.back().pos[1], imu_states_sld_win_.back().pos[2]));
+    transform.setRotation(tf::Quaternion(imu_states_sld_win_.back().rot.x(), imu_states_sld_win_.back().rot.y(), imu_states_sld_win_.back().rot.z(), imu_states_sld_win_.back().rot.w()));
+    br.sendTransform(tf::StampedTransform(transform, ros::Time().fromSec(imu_states_sld_win_.back().timestamp), "world", "imu_link"));
+  }
+  if (!imu_states_shift_out.empty()) {
+    static nav_msgs::Path path;
+    path.header.stamp    = ros::Time().fromSec(imu_states_shift_out.back().timestamp);
+    path.header.frame_id = "world";
+    for (int i = 0; i < imu_states_shift_out.size(); ++i) {
+      geometry_msgs::PoseStamped pose;
+      pose.header.stamp       = ros::Time().fromSec(imu_states_shift_out[i].timestamp);
+      pose.header.frame_id    = "body";
+      pose.pose.position.x    = imu_states_shift_out[i].pos[0];
+      pose.pose.position.y    = imu_states_shift_out[i].pos[1];
+      pose.pose.position.z    = imu_states_shift_out[i].pos[2];
+      pose.pose.orientation.x = imu_states_shift_out[i].rot.x();
+      pose.pose.orientation.y = imu_states_shift_out[i].rot.y();
+      pose.pose.orientation.z = imu_states_shift_out[i].rot.z();
+      pose.pose.orientation.w = imu_states_shift_out[i].rot.w();
+      path.poses.push_back(pose);
+    }
+    pub_imu_path_.publish(path);
   }
 
   ++sweep_id_;
@@ -639,6 +665,7 @@ void LidarOdometry::AddImuData(const ImuData &msg) {
 LidarOdometry::LidarOdometry() : io_("/tmp") {
   pub_plane_map_         = nh_.advertise<visualization_msgs::MarkerArray>("/current_planes", 10);
   pub_scan_in_imu_frame_ = nh_.advertise<sensor_msgs::PointCloud2>("/scan_in_imu_frame", 10);
+  pub_imu_path_          = nh_.advertise<nav_msgs::Path>("/imu_path", 10);
 }
 
 LidarOdometry::~LidarOdometry() {

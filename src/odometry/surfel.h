@@ -17,9 +17,6 @@ struct SampleState {
   Eigen::Map<Vector3d> ba{data_cor + 9};
 
   Vector3d grav;
-
-  Quaterniond rot;
-  Vector3d    pos;
 };
 
 struct ImuState {
@@ -35,8 +32,18 @@ struct ImuState {
 struct Surfel {
   typedef std::shared_ptr<Surfel> Ptr;
 
+  double   timestamp;
+  Vector3d center;      // in world frame
+  Vector3d normal;      // in world frame
+  Matrix3d covariance;  // in world frame
+  double   resolution;
+
  public:
-  Surfel(double timestamp, const Vector3d &center, const Matrix3d &covariance, const Vector3d &norm, double resolution, double plane_std_deviation) : timestamp(timestamp), center(center), covariance(covariance), norm(norm), resolution(resolution), plane_std_deviation(plane_std_deviation) {
+  Surfel(double timestamp, const Vector3d &center, const Matrix3d &covariance, const Vector3d &norm, double resolution) : timestamp(timestamp), center(center), covariance(covariance), normal(norm), resolution(resolution) {
+  }
+
+  double AngularDistance(const Surfel &surfel) const {
+    return std::acos(normal.dot(surfel.normal));
   }
 
   /**
@@ -45,80 +52,30 @@ struct Surfel {
    * @param pos
    * @param rot
    */
-  void UpdatePose(const Vector3d &pos, const Quaterniond &rot) {
-    this->pos = pos;
-    this->rot = rot;
-
-    if (!is_in_body_frame) {
-      is_in_body_frame = true;
-      center           = rot.conjugate() * (center - pos);
-      norm             = rot.conjugate() * norm;
-      covariance       = rot.conjugate() * covariance * rot;
+  void UpdatePose(const Vector3d &pos_new, const Quaterniond &rot_new) {
+    if (!pose_inited) {
+      this->pos   = pos_new;
+      this->rot   = rot_new;
+      pose_inited = true;
+      return;
     }
+
+    // T_new * T_old^-1
+    Quaterniond rot_cor = rot_new * this->rot.conjugate();
+    Vector3d    pos_cor = pos_new - rot_new * this->rot.conjugate() * this->pos;
+
+    center     = rot_cor * center + pos_cor;
+    normal     = rot_cor * normal + pos_cor;
+    covariance = rot_cor * covariance * rot_cor.conjugate();
+
+    this->pos = pos_new;
+    this->rot = rot_new;
   }
-
-  /**
-   * @brief Get the surfel center in world frame
-   *
-   * Used in knn search and surfel visualization
-   *
-   * @return Vector3d
-   */
-  Vector3d GetCenterInWorld() const {
-    return rot * center + pos;
-  }
-
-  /**
-   * @brief Get the surfel normal in world frame
-   *
-   * Used in knn search and surfel visualization
-   *
-   * @return Vector3d
-   */
-  Vector3d GetNormInWorld() const {
-    return rot * norm;
-  }
-
-  /**
-   * @brief Get the covariance in world frame
-   *
-   * Used in surfel match weight and surfel visualization
-   *
-   * @return Matrix3d
-   */
-  Matrix3d GetCovarianceInWorld() const {
-    return rot * covariance * rot.conjugate();
-  }
-
-  /**
-   * @brief Get the surfel center in body frame
-   *
-   * Used in surfel match factor
-   *
-   * @return Vector3d
-   */
-  Vector3d CenterInBody() const {
-    CHECK(is_in_body_frame) << "You should call UpdatePose first.";
-    return center;
-  }
-
-  double AngularDistance(const Surfel &surfel) const {
-    return std::acos(GetNormInWorld().dot(surfel.GetNormInWorld()));
-  }
-
- public:
-  double timestamp;
-  double resolution;
-  double plane_std_deviation;
-
-  Quaterniond rot{1, 0, 0, 0};  // body frame to world frame
-  Vector3d    pos{0, 0, 0};     // body frame to world frame
 
  private:
-  bool     is_in_body_frame = false;
-  Vector3d center;      // in body frame
-  Matrix3d covariance;  // in body frame
-  Vector3d norm;        // in body frame
+  bool        pose_inited = false;
+  Quaterniond rot;  // body frame to world frame
+  Vector3d    pos;  // body frame to world frame
 };
 
 struct SurfelCorrespondence {

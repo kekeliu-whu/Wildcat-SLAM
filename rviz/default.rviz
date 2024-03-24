@@ -7,8 +7,6 @@ Panels:
         - /Global Options1
         - /Status1
         - /LIO1
-        - /LIO1/Axes1
-        - /LIO1/scan1
       Splitter Ratio: 0.5
     Tree Height: 719
   - Class: rviz/Selection
@@ -138,6 +136,30 @@ Visualization Manager:
             {}
           Queue Size: 100
           Value: false
+        - Alpha: 1
+          Buffer Length: 1
+          Class: rviz/Path
+          Color: 25; 255; 0
+          Enabled: true
+          Head Diameter: 0.30000001192092896
+          Head Length: 0.20000000298023224
+          Length: 0.30000001192092896
+          Line Style: Billboards
+          Line Width: 0.009999999776482582
+          Name: path
+          Offset:
+            X: 0
+            Y: 0
+            Z: 0
+          Pose Color: 255; 85; 255
+          Pose Style: None
+          Queue Size: 10
+          Radius: 0.029999999329447746
+          Shaft Diameter: 0.10000000149011612
+          Shaft Length: 0.10000000149011612
+          Topic: /imu_path
+          Unreliable: false
+          Value: true
       Enabled: true
       Name: LIO
   Enabled: true
@@ -168,7 +190,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/XYOrbit
-      Distance: 24.403095245361328
+      Distance: 29.79258918762207
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -176,17 +198,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: 0.11833786964416504
-        Y: -4.537572860717773
+        X: 0
+        Y: 0
         Z: 0
-      Focal Shape Fixed Size: true
+      Focal Shape Fixed Size: false
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: -1.5597963333129883
+      Pitch: 0.7853981852531433
       Target Frame: <Fixed Frame>
-      Yaw: 2.9585297107696533
+      Yaw: 0.7853981852531433
     Saved: ~
 Window Geometry:
   Displays:

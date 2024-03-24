@@ -59,7 +59,7 @@ void ClusterSurfels(
     if (norm.dot(center - view_point) < 0) {
       norm = -norm;
     }
-    Surfel::Ptr sf{new Surfel(timestamp, center, covariance, norm, resolution, std::sqrt(evals(evalsMin)))};
+    Surfel::Ptr sf{new Surfel(timestamp, center, covariance, norm, resolution)};
     surfels.push_back(sf);
   }
 }
@@ -313,7 +313,7 @@ void OctoTree::ExtractSurfelInfo(std::deque<Surfel::Ptr> &surfels, int cur_layer
   }
 }
 
-void BuildSurfels(const std::vector<hilti_ros::Point> &cloud, std::deque<Surfel::Ptr> &surfels, GlobalMap &map) {
+void BuildSurfels(const std::deque<hilti_ros::Point> &cloud, std::deque<Surfel::Ptr> &surfels, GlobalMap &map) {
   std::vector<PointWithCov> points;
 
   for (auto &e : cloud) {
@@ -367,7 +367,7 @@ void PubSurfels(std::deque<Surfel::Ptr> surfels,
 
     // NOTE: The SelfAdjointEigenSolver only references the lower triangular part of the covariance matrix
     // FIXME: Should we use Eigen's pseudoEigenvectors() ?
-    Eigen::SelfAdjointEigenSolver<Matrix3d> eigensolver(surfel->GetCovarianceInWorld());
+    Eigen::SelfAdjointEigenSolver<Matrix3d> eigensolver(surfel->covariance);
     // Compute eigenvectors and eigenvalues
     if (eigensolver.info() == Eigen::Success) {
       eigenvalues  = eigensolver.eigenvalues();
@@ -388,8 +388,8 @@ void PubSurfels(std::deque<Surfel::Ptr> surfels,
         eigenvectors(2, 0), eigenvectors(2, 1), eigenvectors(2, 2);
     Quaterniond qq{rot};
 
-    auto center = surfel->GetCenterInWorld();
-    auto norm   = surfel->GetNormInWorld();
+    auto center = surfel->center;
+    auto norm   = surfel->normal;
 
     static int                 id = 0;
     visualization_msgs::Marker plane;
