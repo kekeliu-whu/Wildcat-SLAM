@@ -34,9 +34,10 @@ class KnnSurfelMatcher {
   std::shared_ptr<FLANNIndex> index_;
   int                         dim_ = 6;
 
-  static constexpr double kCenterDistThreshold        = 1.0;
-  static constexpr double kAngularDistThreshold       = 5.0 * M_PI / 180.0;
-  static constexpr double kSurfelDistThreshold        = 0.1;
+  static constexpr double kSpatialKnnNormalize        = 1.0;
+  static constexpr double kAngularKnnNormalize        = 5.0 * M_PI / 180.0;
+  static constexpr double kNormDistThreshold          = 0.2;
+  static constexpr double kProjDistThreshold          = 0.5;
   static constexpr int    kNearestSurfelCandidatesNum = 10;
   static constexpr double kTimeDiffThreshold          = 0.06;
 };

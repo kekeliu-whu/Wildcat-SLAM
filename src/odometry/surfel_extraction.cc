@@ -331,7 +331,7 @@ void BuildSurfels(const std::deque<hilti_ros::Point> &cloud, std::deque<Surfel::
     e.second->ExtractSurfelInfo(surfels);
   }
 
-  std::sort(surfels.begin(), surfels.end(), [](const auto &a, const auto &b) { return a->timestamp< b->timestamp; });
+  std::sort(surfels.begin(), surfels.end(), [](const auto &a, const auto &b) { return a->timestamp < b->timestamp; });
 
   LOG(INFO) << "Surfel Extraction done, surfel count = " << surfels.size();
 }

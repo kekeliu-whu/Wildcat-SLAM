@@ -11,6 +11,10 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     set(CMAKE_CXX_FLAGS "-Wthread-safety")
 endif()
 # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address")
+option(ENABLE_AGGRESIVE_OPT "Enable aggressive optimization" ON)
+if(ENABLE_AGGRESIVE_OPT)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
+endif()
 #################### Set compiler options end ####################
 
 
@@ -76,6 +80,7 @@ catkin_package(
 include_directories(
     src
     3rd-party/Sophus-1.22.10
+    gen/cpp
     ${catkin_INCLUDE_DIRS}
     ${PCL_INCLUDE_DIRS}
     ${CERES_INCLUDE_DIRS}
@@ -93,6 +98,7 @@ set(
     src/odometry/surfel_extraction.cc
     src/odometry/knn_surfel_matcher.cc
     src/odometry/cost_functor.cc
+    src/odometry/surfel.cc
 )
 list(APPEND PROJECT_SRCS ${ALL_PROTO_SRCS})
 

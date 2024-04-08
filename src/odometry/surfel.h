@@ -10,11 +10,13 @@ struct SampleState {
   typedef std::shared_ptr<SampleState> Ptr;
 
   double               timestamp;
-  double               data_cor[12] = {0};  // q, t, bg, ba
+  double               data_cor[6] = {0};  // q, t, bg, ba
   Eigen::Map<Vector3d> rot_cor{data_cor + 0};
   Eigen::Map<Vector3d> pos_cor{data_cor + 3};
-  Eigen::Map<Vector3d> bg{data_cor + 6};
-  Eigen::Map<Vector3d> ba{data_cor + 9};
+  Eigen::Map<Vector3d> bg{data_bias + 0};
+  Eigen::Map<Vector3d> ba{data_bias + 3};
+
+  static double data_bias[6];
 
   Vector3d grav;
 };

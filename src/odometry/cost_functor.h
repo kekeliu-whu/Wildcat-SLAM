@@ -5,7 +5,7 @@
 #include "odometry/surfel.h"
 
 template <typename T>
-using Vector12 = Eigen::Matrix<T, 12, 1>;
+using Vector6 = Eigen::Matrix<T, 6, 1>;
 
 /**
  * @brief s1 s2 is two corresponding surfels
@@ -13,21 +13,16 @@ using Vector12 = Eigen::Matrix<T, 12, 1>;
  * Timestamp order: s1 < sp2l <= s2 < sp2r
  *
  */
-struct SurfelMatchUnaryFactor {
+struct SurfelMatchUnaryFactor : ceres::SizedCostFunction<1, 6, 6> {
   SurfelMatchUnaryFactor(
       std::shared_ptr<Surfel>      s1,
       std::shared_ptr<Surfel>      s2,
       std::shared_ptr<SampleState> sp2l,
       std::shared_ptr<SampleState> sp2r);
 
-  template <typename T>
-  bool operator()(const T* sp2l_ptr, const T* sp2r_ptr, T* residuals) const;
-
-  static ceres::CostFunction* Create(
-      std::shared_ptr<Surfel>      s1,
-      std::shared_ptr<Surfel>      s2,
-      std::shared_ptr<SampleState> sp2l,
-      std::shared_ptr<SampleState> sp2r);
+  virtual bool Evaluate(double const* const* parameters,
+                        double*              residuals,
+                        double**             jacobians) const;
 
  private:
   std::shared_ptr<Surfel>      s1_;
@@ -42,52 +37,68 @@ struct SurfelMatchUnaryFactor {
 /**
  * @brief s1 s2 is two corresponding surfels
  *
+ * sp1l <= s1 < sp1r < sp2l <= s2 < sp2r
+ *
  */
-struct SurfelMatchBinaryFactor {
-  SurfelMatchBinaryFactor(
-      std::shared_ptr<Surfel>      s1,
-      std::shared_ptr<SampleState> sp1l,
-      std::shared_ptr<SampleState> sp1r,
-      std::shared_ptr<Surfel>      s2,
-      std::shared_ptr<SampleState> sp2l,
-      std::shared_ptr<SampleState> sp2r);
+class SurfelMatchBinaryFactor4SampleStates : public ceres::SizedCostFunction<1, 6, 6, 6, 6> {
+ public:
+  SurfelMatchBinaryFactor4SampleStates(std::shared_ptr<Surfel> s1, std::shared_ptr<SampleState> sp1l, std::shared_ptr<SampleState> sp1r, std::shared_ptr<Surfel> s2, std::shared_ptr<SampleState> sp2l, std::shared_ptr<SampleState> sp2r);
 
-  template <typename T>
-  bool operator()(const T* sp1l_ptr, const T* sp1r_ptr, const T* sp2l_ptr, const T* sp2r_ptr, T* residuals) const;
-
-  template <typename T>
-  bool operator()(const T* sp1l_ptr, const T* sp1r_ptr, const T* sp2r_ptr, T* residuals) const;
-
-  template <typename T>
-  bool operator()(const T* sp1l_ptr, const T* sp1r_ptr, T* residuals) const;
-
-  // sp1l <= s1 < sp1r < sp2l <= s2 < sp2r
-  static ceres::CostFunction* Create(
-      std::shared_ptr<Surfel>      s1,
-      std::shared_ptr<SampleState> sp1l,
-      std::shared_ptr<SampleState> sp1r,
-      std::shared_ptr<Surfel>      s2,
-      std::shared_ptr<SampleState> sp2l,
-      std::shared_ptr<SampleState> sp2r);
-
-  // sp1l <= s1 < sp1r = sp2l <= s2 < sp2r
-  static ceres::CostFunction* Create(
-      std::shared_ptr<Surfel>      s1,
-      std::shared_ptr<SampleState> sp1l,
-      std::shared_ptr<SampleState> sp1r,
-      std::shared_ptr<Surfel>      s2,
-      std::shared_ptr<SampleState> sp2r);
-
-  // sp1l = sp2l <= s1 < s2 < sp1r = sp2r
-  static ceres::CostFunction* Create(
-      std::shared_ptr<Surfel>      s1,
-      std::shared_ptr<SampleState> sp1l,
-      std::shared_ptr<SampleState> sp1r,
-      std::shared_ptr<Surfel>      s2);
+  virtual bool Evaluate(double const* const* parameters,
+                        double*              residuals,
+                        double**             jacobians) const;
 
  private:
-  template <typename T>
-  void Helper(const T* sp1l_ptr, const T* sp1r_ptr, const T* sp2l_ptr, const T* sp2r_ptr, T* residuals) const;
+  std::shared_ptr<Surfel>      s1_;
+  std::shared_ptr<SampleState> sp1l_;
+  std::shared_ptr<SampleState> sp1r_;
+  std::shared_ptr<Surfel>      s2_;
+  std::shared_ptr<SampleState> sp2l_;
+  std::shared_ptr<SampleState> sp2r_;
+
+  Vector3d norm_;
+  double   weight_;
+};
+
+/**
+ * @brief s1 s2 is two corresponding surfels
+ *
+ * sp1l <= s1 < sp1r = sp2l <= s2 < sp2r
+ *
+ */
+class SurfelMatchBinaryFactor3SampleStates : public ceres::SizedCostFunction<1, 6, 6, 6> {
+ public:
+  SurfelMatchBinaryFactor3SampleStates(std::shared_ptr<Surfel> s1, std::shared_ptr<SampleState> sp1l, std::shared_ptr<SampleState> sp1r, std::shared_ptr<Surfel> s2, std::shared_ptr<SampleState> sp2r);
+
+  virtual bool Evaluate(double const* const* parameters,
+                        double*              residuals,
+                        double**             jacobians) const;
+
+ private:
+  std::shared_ptr<Surfel>      s1_;
+  std::shared_ptr<SampleState> sp1l_;
+  std::shared_ptr<SampleState> sp1r_;
+  std::shared_ptr<Surfel>      s2_;
+  std::shared_ptr<SampleState> sp2l_;
+  std::shared_ptr<SampleState> sp2r_;
+
+  Vector3d norm_;
+  double   weight_;
+};
+
+/**
+ * @brief s1 s2 is two corresponding surfels
+ *
+ * sp1l = sp2l <= s1 < s2 < sp1r = sp2r
+ *
+ */
+class SurfelMatchBinaryFactor2SampleStates : public ceres::SizedCostFunction<1, 6, 6> {
+ public:
+  SurfelMatchBinaryFactor2SampleStates(std::shared_ptr<Surfel> s1, std::shared_ptr<SampleState> sp1l, std::shared_ptr<SampleState> sp1r, std::shared_ptr<Surfel> s2);
+
+  virtual bool Evaluate(double const* const* parameters,
+                        double*              residuals,
+                        double**             jacobians) const;
 
  private:
   std::shared_ptr<Surfel>      s1_;
@@ -113,7 +124,7 @@ struct ImuFactorWith3SampleStates {
                              double dt, const Vector3d& gravity);
 
   template <typename T>
-  bool operator()(const T* sp1_ptr, const T* sp2_ptr, const T* sp3_ptr, T* residuals) const;
+  bool operator()(const T* sp1_ptr, const T* sp2_ptr, const T* sp3_ptr, const T* bias_ptr, T* residuals) const;
 
   static ceres::CostFunction* Create(const ImuState& i1, const ImuState& i2, const ImuState& i3,
                                      double sp1_timestamp, double sp2_timestamp, double sp3_timestamp,
@@ -123,17 +134,15 @@ struct ImuFactorWith3SampleStates {
  private:
   template <typename T>
   void ComputeStateCorr(
-      Eigen::Map<const Vector12<T>>& sp1,
-      Eigen::Map<const Vector12<T>>& sp2,
-      Eigen::Map<const Vector12<T>>& sp3,
+      Eigen::Map<const Vector6<T>>& sp1,
+      Eigen::Map<const Vector6<T>>& sp2,
+      Eigen::Map<const Vector6<T>>& sp3,
       double                         sp1_timestamp,
       double                         sp2_timestamp,
       double                         sp3_timestamp,
       double                         timestamp,
-      Eigen::Matrix<T, 3, 1>&        r_cor,
-      Eigen::Matrix<T, 3, 1>&        t_cor,
-      Eigen::Matrix<T, 3, 1>&        bg,
-      Eigen::Matrix<T, 3, 1>&        ba) const;
+      Eigen::Quaternion<T>&          R_cor,
+      Eigen::Matrix<T, 3, 1>&        t_cor) const;
 
  private:
   ImuState i1_, i2_, i3_;
@@ -160,7 +169,7 @@ struct ImuFactorWith2SampleStates {
                              double dt, const Vector3d& gravity);
 
   template <typename T>
-  bool operator()(const T* sp1_ptr, const T* sp2_ptr, T* residuals) const;
+  bool operator()(const T* sp1_ptr, const T* sp2_ptr, const T* bias_ptr, T* residuals) const;
 
   static ceres::CostFunction* Create(const ImuState& i1, const ImuState& i2, const ImuState& i3,
                                      double sp1_timestamp, double sp2_timestamp,
@@ -170,15 +179,13 @@ struct ImuFactorWith2SampleStates {
  private:
   template <typename T>
   void ComputeStateCorr(
-      const Eigen::Map<const Vector12<T>>& sp1,
-      const Eigen::Map<const Vector12<T>>& sp2,
+      const Eigen::Map<const Vector6<T>>& sp1,
+      const Eigen::Map<const Vector6<T>>& sp2,
       double                               sp1_timestamp,
       double                               sp2_timestamp,
       double                               timestamp,
-      Eigen::Matrix<T, 3, 1>&              r_cor,
-      Eigen::Matrix<T, 3, 1>&              t_cor,
-      Eigen::Matrix<T, 3, 1>&              bg,
-      Eigen::Matrix<T, 3, 1>&              ba) const;
+      Eigen::Quaternion<T>&                R_cor,
+      Eigen::Matrix<T, 3, 1>&              t_cor) const;
 
  private:
   ImuState i1_, i2_, i3_;

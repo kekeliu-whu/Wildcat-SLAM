@@ -10,6 +10,14 @@
 #include "odometry/lio_config.h"
 #include "odometry/surfel.h"
 
+struct MeasureGroup {
+  int                          sweep_id;
+  double                       sweep_beg_time;
+  double                       sweep_end_time;
+  std::deque<ImuData>          imu_msgs;
+  std::deque<hilti_ros::Point> lidar_points;
+};
+
 class LidarOdometry {
  public:
   LidarOdometry();
@@ -30,23 +38,14 @@ class LidarOdometry {
 
  private:
   /**
-   * @brief Predict imu states and sample states
-   *
-   * Timestamp Order:
-   *   IMU:          i_0 < i_1 < ... < i_{n-2} < end_time <= i_{n-1}
-   *   Sample State: s_0 < s_1 < ... < s_{n-1} < end_time
-   *
-   * @param end_time
-   */
-  void PredictImuStatesAndSampleStates();
-
-  /**
    * @brief Remove heading imus and points to make sure they are in sync
    *
    * @return true
    * @return false
    */
   bool SyncHeadingMsgs();
+
+  bool SyncPackages(MeasureGroup &mg);
 
   void BuildSldWinLidarResiduals(const std::vector<SurfelCorrespondence> &surfel_corrs, ceres::Problem &problem, std::vector<ceres::ResidualBlockId> &residual_ids);
 

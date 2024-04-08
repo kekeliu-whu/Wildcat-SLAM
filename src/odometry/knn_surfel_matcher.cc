@@ -26,10 +26,13 @@ void KnnSurfelMatcher::Match(std::deque<Surfel::Ptr> &surfels, std::vector<Surfe
       if (std::abs(nearest_surfel->timestamp - surfel->timestamp) < kTimeDiffThreshold) {
         continue;
       }
-      if (surfel->AngularDistance(*nearest_surfel) > kAngularDistThreshold) {
+      if (surfel->AngularDistance(*nearest_surfel) > kAngularKnnNormalize) {
         continue;
       }
-      if (std::abs(surfel->normal.dot(surfel->center - nearest_surfel->center)) > kSurfelDistThreshold) {
+      if (std::abs(surfel->normal.dot(surfel->center - nearest_surfel->center)) > kNormDistThreshold) {
+        continue;
+      }
+      if (surfel->normal.cross(nearest_surfel->normal).norm() > kProjDistThreshold) {
         continue;
       }
       if (surfel_pairs.find({surfel, nearest_surfel}) != surfel_pairs.end() ||
@@ -92,7 +95,7 @@ std::vector<KnnSurfelMatcher::FloatType> KnnSurfelMatcher::ToVector(const Surfel
   // todo use resolution
   auto     center         = surfel->center;
   auto     norm           = surfel->normal;
-  Vector3d center_uniform = center / kCenterDistThreshold;
-  Vector3d norm_uniform   = norm / kAngularDistThreshold;
+  Vector3d center_uniform = center / kSpatialKnnNormalize;
+  Vector3d norm_uniform   = norm / kAngularKnnNormalize;
   return {center_uniform.x(), center_uniform.y(), center_uniform.z(), norm_uniform.x(), norm_uniform.y(), norm_uniform.z()};
 }

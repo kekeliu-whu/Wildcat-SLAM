@@ -1,5 +1,6 @@
 #pragma once
 
+#include <glog/logging.h>
 #include <Eigen/Eigen>
 #include <cmath>
 
@@ -35,13 +36,21 @@ struct LioConfig {
   double sliding_window_duration = 5.0;   // sliding window duration in seconds
   int    sample_num_per_sweep    = 5;
   double sweep_duration          = sample_num_per_sweep * sample_dt;  // sweep duration in seconds
+  int    imu_num_per_sweep       = int(sweep_duration * imu_rate + 1e-6);
 
   ///////////////////// Sliding windows optimization parameters //////////////////////
   double gravity_norm                            = 9.81;
   int    outer_iter_num_max                      = 1;
-  int    inner_iter_num_max                      = 50;
+  int    inner_iter_num_max                      = 10;
+  int    opt_thread_num                          = 8;
   double gyroscope_noise_density_cost_weight     = 1 / (gyroscope_noise_density * sqrt(imu_rate)) * imu_factor_weight;
   double accelerometer_noise_density_cost_weight = 1 / (accelerometer_noise_density * sqrt(imu_rate)) * imu_factor_weight;
   double gyroscope_random_walk_cost_weight       = 1 / (gyroscope_random_walk / sqrt(imu_rate)) * imu_factor_weight;
   double accelerometer_random_walk_cost_weight   = 1 / (accelerometer_random_walk / sqrt(imu_rate)) * imu_factor_weight;
+
+ public:
+  LioConfig() {
+    CHECK_EQ(imu_num_per_sweep * 1.0 / imu_rate, sweep_duration);
+    CHECK_EQ(imu_num_per_sweep % sample_num_per_sweep, 0);
+  }
 };
