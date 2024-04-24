@@ -12,7 +12,6 @@ int g_plane_id = 0;
 void ClusterSurfels(
     const std::vector<PointWithCov> &points,
     double                           resolution,
-    const Vector3d                  &view_point,
     double                           planer_threshold,
     double                           min_plane_likeness,
     std::deque<Surfel::Ptr>         &surfels) {
@@ -55,10 +54,7 @@ void ClusterSurfels(
       continue;
     }
 
-    Vector3d norm = evecs.col(evalsMin);
-    if (norm.dot(center - view_point) < 0) {
-      norm = -norm;
-    }
+    Vector3d    norm = evecs.col(evalsMin);
     Surfel::Ptr sf{new Surfel(timestamp, center, covariance, norm, resolution)};
     surfels.push_back(sf);
   }
@@ -67,8 +63,8 @@ void ClusterSurfels(
 }  // namespace
 
 OctoTree::OctoTree(int max_layer, int layer, std::vector<int> layer_point_size,
-                   float planer_threshold, double min_plane_likeness, const Vector3d &view_point)
-    : max_layer_(max_layer), layer_(layer), layer_point_size_(layer_point_size), planer_threshold_(planer_threshold), min_plane_likeness_(min_plane_likeness), view_point_(view_point) {
+                   float planer_threshold, double min_plane_likeness)
+    : max_layer_(max_layer), layer_(layer), layer_point_size_(layer_point_size), planer_threshold_(planer_threshold), min_plane_likeness_(min_plane_likeness) {
   temp_points_.clear();
   octo_state_                       = 0;
   layer_point_size_plane_threshold_ = layer_point_size_[layer_];
@@ -110,10 +106,7 @@ void OctoTree::InitPlane(const std::vector<PointWithCov> &points, Plane *plane) 
     plane->is_plane = false;
   }
 
-  plane->normal = evecs.col(evalsMin);
-  if (plane->normal.dot(plane->center - view_point_) < 0) {
-    plane->normal = -plane->normal;
-  }
+  plane->normal          = evecs.col(evalsMin);
   plane->y_normal        = evecs.col(evalsMid);
   plane->x_normal        = evecs.col(evalsMax);
   plane->min_eigen_value = evals(evalsMin);
@@ -159,7 +152,7 @@ void OctoTree::CutOctoTree() {
     if (leaves_[leafnum] == nullptr) {
       leaves_[leafnum] = new OctoTree(
           max_layer_, layer_ + 1, layer_point_size_,
-          planer_threshold_, min_plane_likeness_, view_point_);
+          planer_threshold_, min_plane_likeness_);
       leaves_[leafnum]->voxel_center_[0] = voxel_center_[0] + (2 * xyz[0] - 1) * quarter_length_;
       leaves_[leafnum]->voxel_center_[1] = voxel_center_[1] + (2 * xyz[1] - 1) * quarter_length_;
       leaves_[leafnum]->voxel_center_[2] = voxel_center_[2] + (2 * xyz[2] - 1) * quarter_length_;
@@ -184,7 +177,6 @@ void OctoTree::CutOctoTree() {
 }
 
 void BuildVoxelMap(const std::vector<PointWithCov>           &input_points,
-                   const Vector3d                            &view_point,
                    const float                                voxel_size,
                    const int                                  max_layer,
                    const std::vector<int>                    &layer_point_size,
@@ -203,7 +195,7 @@ void BuildVoxelMap(const std::vector<PointWithCov>           &input_points,
     } else {
       OctoTree *octo_tree =
           new OctoTree(max_layer, 0, layer_point_size,
-                       planer_threshold, min_plane_likeness, view_point);
+                       planer_threshold, min_plane_likeness);
       feat_map[position]                   = octo_tree;
       feat_map[position]->quarter_length_  = voxel_size / 4;
       feat_map[position]->voxel_center_[0] = (0.5 + position.x) * voxel_size;
@@ -304,7 +296,7 @@ template void DownSamplingVoxelRandom<PointType>(const pcl::PointCloud<PointType
 void OctoTree::ExtractSurfelInfo(std::deque<Surfel::Ptr> &surfels, int cur_layer) {
   if (this->plane_ptr_ && this->plane_ptr_->is_plane) {
     CHECK(!this->temp_points_.empty());
-    ClusterSurfels(this->temp_points_, this->quarter_length_ * 4, view_point_, planer_threshold_, min_plane_likeness_, surfels);
+    ClusterSurfels(this->temp_points_, this->quarter_length_ * 4, planer_threshold_, min_plane_likeness_, surfels);
   }
   for (auto &leaf : this->leaves_) {
     if (leaf) {
@@ -324,7 +316,13 @@ void BuildSurfels(const std::deque<hilti_ros::Point> &cloud, std::deque<Surfel::
   }
 
   // todo magic number
-  BuildVoxelMap(points, Vector3d::Zero(), 0.8, 2, {20, 20, 20, 20}, 0.01, 0.1, map.feat_map);
+  BuildVoxelMap(points,
+                0.8,
+                2,  // layer size - 1, min voxel size: 0.8/2**(layer+1)
+                {16, 16, 16, 16},
+                0.01,
+                0.1,
+                map.feat_map);
 
   std::vector<pcl::PointCloud<PointType>> cloud_surfel_multi_layers(4);
   for (auto &e : map.feat_map) {

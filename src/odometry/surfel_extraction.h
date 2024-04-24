@@ -89,7 +89,6 @@ class OctoTree {
   OctoTree                 *leaves_[8];
   double                    voxel_center_[3];
   float                     quarter_length_;
-  Vector3d                  view_point_;  // todo set plane norm by trajectory instead of one point
 
   float  planer_threshold_;
   double min_plane_likeness_;
@@ -99,8 +98,7 @@ class OctoTree {
   int              max_layer_;
 
   OctoTree(int max_layer, int layer, std::vector<int> layer_point_size,
-           float planer_threshold, double min_plane_likeness,
-           const Vector3d &view_point);
+           float planer_threshold, double min_plane_likeness);
 
   ~OctoTree() {
     delete plane_ptr_;
@@ -134,7 +132,6 @@ class GlobalMap {
 };
 
 void BuildVoxelMap(const std::vector<PointWithCov>           &input_points,
-                   const Vector3d                            &view_point,
                    const float                                voxel_size,
                    const int                                  max_layer,
                    const std::vector<int>                    &layer_point_size,
@@ -143,8 +140,8 @@ void BuildVoxelMap(const std::vector<PointWithCov>           &input_points,
                    absl::flat_hash_map<VoxelLoc, OctoTree *> &feat_map);
 
 void BuildSurfels(const std::deque<hilti_ros::Point> &cloud,
-                  std::deque<Surfel::Ptr>             &surfels,
-                  GlobalMap                           &map);
+                  std::deque<Surfel::Ptr>            &surfels,
+                  GlobalMap                          &map);
 
 void PubPlaneMap(const absl::flat_hash_map<VoxelLoc, OctoTree *> &feat_map,
                  const ros::Publisher                            &plane_map_pub);

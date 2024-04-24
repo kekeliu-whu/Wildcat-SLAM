@@ -362,7 +362,11 @@ void LidarOdometry::BuildSldWinLidarResiduals(const std::vector<SurfelCorrespond
     auto sp2l = *(sp2r_it - 1);
     auto sp2r = *(sp2r_it);
 
-    auto loss_function = new ceres::CauchyLoss(0.4);  // todo set cauchy loss param
+    Matrix3d                                cov = surfel_corr.s1->covariance + surfel_corr.s2->covariance;
+    Eigen::SelfAdjointEigenSolver<Matrix3d> es(cov);
+    double                                  weight        = 1 / sqrt(pow(0.05 / 6, 2) + es.eigenvalues()[0]);
+    auto                                    loss_function = new ceres::ScaledLoss(surfel_match_cauchy_loss_.get(), weight, ceres::DO_NOT_TAKE_OWNERSHIP);
+
     if (sp1r->timestamp < sp2l->timestamp) {
       auto residual_id = problem.AddResidualBlock(
           new SurfelMatchBinaryFactor4SampleStates(surfel_corr.s1, sp1l, sp1r, surfel_corr.s2, sp2l, sp2r),
@@ -412,8 +416,12 @@ void LidarOdometry::BuildFixWinLidarResiduals(const std::vector<SurfelCorrespond
     auto sp2l = *(sp2r_it - 1);
     auto sp2r = *(sp2r_it);
 
-    auto loss_function = new ceres::CauchyLoss(0.4);  // todo set cauchy loss param
-    auto residual_id   = problem.AddResidualBlock(
+    Matrix3d                                cov = surfel_corr.s1->covariance + surfel_corr.s2->covariance;
+    Eigen::SelfAdjointEigenSolver<Matrix3d> es(cov);
+    double                                  weight        = 1 / sqrt(pow(0.05 / 6, 2) + es.eigenvalues()[0]);
+    auto                                    loss_function = new ceres::ScaledLoss(surfel_match_cauchy_loss_.get(), weight, ceres::DO_NOT_TAKE_OWNERSHIP);
+
+    auto residual_id = problem.AddResidualBlock(
         new SurfelMatchUnaryFactor(surfel_corr.s1, surfel_corr.s2, sp2l, sp2r),
         loss_function,
         sp2l->data_cor,
@@ -692,6 +700,8 @@ LidarOdometry::LidarOdometry() : io_("/tmp") {
   pub_plane_map_         = nh_.advertise<visualization_msgs::MarkerArray>("/current_planes", 10);
   pub_scan_in_imu_frame_ = nh_.advertise<sensor_msgs::PointCloud2>("/scan_in_imu_frame", 10);
   pub_imu_path_          = nh_.advertise<nav_msgs::Path>("/imu_path", 10);
+
+  surfel_match_cauchy_loss_.reset(new ceres::CauchyLoss(config_.surfel_match_cauchy));
 }
 
 LidarOdometry::~LidarOdometry() {

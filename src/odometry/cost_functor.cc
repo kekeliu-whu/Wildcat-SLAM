@@ -16,8 +16,7 @@ SurfelMatchUnaryFactor::SurfelMatchUnaryFactor(
     std::shared_ptr<SampleState> sp2r) : s1_(s1), sp2l_(sp2l), sp2r_(sp2r), s2_(s2) {
   Matrix3d                                cov = s1_->covariance + s2_->covariance;
   Eigen::SelfAdjointEigenSolver<Matrix3d> es(cov);
-  weight_ = 1 / sqrt(pow(0.05 / 6, 2) + es.eigenvalues()[0]);
-  norm_   = es.eigenvectors().col(0);
+  norm_ = es.eigenvectors().col(0);
 }
 
 bool SurfelMatchUnaryFactor::Evaluate(double const *const *parameters,
@@ -31,7 +30,7 @@ bool SurfelMatchUnaryFactor::Evaluate(double const *const *parameters,
   DCHECK_LE(factor2, 1.0);
 
   residuals[0] = sym::SurfelUnaryMatchWithJacobians01(
-      sp2l_cor, sp2r_cor, factor2, weight_, norm_, s1_->center, s2_->center,
+      sp2l_cor, sp2r_cor, factor2, norm_, s1_->center, s2_->center,
       eps,
       jacobians ? jacobians[0] : nullptr,
       jacobians ? jacobians[1] : nullptr);
@@ -41,10 +40,10 @@ bool SurfelMatchUnaryFactor::Evaluate(double const *const *parameters,
 
 template <typename T>
 void ImuFactorHelper(
-    Eigen::Quaternion<T> &R_i1_cor, Eigen::Matrix<T, 3, 1> &t_i1_cor,
-    Eigen::Quaternion<T> &R_i2_cor, Eigen::Matrix<T, 3, 1> &t_i2_cor,
-    Eigen::Quaternion<T> &R_i3_cor, Eigen::Matrix<T, 3, 1> &t_i3_cor,
-    Eigen::Matrix<T, 3, 1> &bg, Eigen::Matrix<T, 3, 1> ba,
+    Eigen::Quaternion<T> &R_i1_cor, Vector3<T> &t_i1_cor,
+    Eigen::Quaternion<T> &R_i2_cor, Vector3<T> &t_i2_cor,
+    Eigen::Quaternion<T> &R_i3_cor, Vector3<T> &t_i3_cor,
+    Vector3<T> &bg, Vector3<T> ba,
     const ImuState &i1_,
     const ImuState &i2_,
     const ImuState &i3_,
@@ -52,8 +51,8 @@ void ImuFactorHelper(
     double          dt_,
     double weight_gyr_, double weight_acc_, double weight_bg_, double weight_ba_,
     T *residuals) {
-  Eigen::Matrix<T, 3, 1> gyr_est = Log((R_i1_cor * i1_.rot.cast<T>()).conjugate() * R_i2_cor * i2_.rot.cast<T>()) / dt_;
-  Eigen::Matrix<T, 3, 1> acc_est = ((t_i3_cor + R_i3_cor * i3_.pos.cast<T>()) + (t_i1_cor + R_i1_cor * i1_.pos.cast<T>()) - 2.0 * (t_i2_cor + R_i2_cor * i2_.pos.cast<T>())) / (dt_ * dt_);
+  Vector3<T> gyr_est = Log((R_i1_cor * i1_.rot.cast<T>()).conjugate() * R_i2_cor * i2_.rot.cast<T>()) / dt_;
+  Vector3<T> acc_est = ((t_i3_cor + R_i3_cor * i3_.pos.cast<T>()) + (t_i1_cor + R_i1_cor * i1_.pos.cast<T>()) - 2.0 * (t_i2_cor + R_i2_cor * i2_.pos.cast<T>())) / (dt_ * dt_);
 
   Eigen::Map<Vector6<T>> r{residuals};
   r.template block<3, 1>(0, 0) = weight_gyr_ * ((i1_.gyr.cast<T>() + i2_.gyr.cast<T>()) / 2.0 - gyr_est - bg);
@@ -69,9 +68,9 @@ bool ImuFactorWith3SampleStates::operator()(const T *sp1_ptr, const T *sp2_ptr, 
   Eigen::Map<const Vector6<T>> sp2{sp2_ptr};
   Eigen::Map<const Vector6<T>> sp3{sp3_ptr};
   Eigen::Quaternion<T>         R_i1_cor, R_i2_cor, R_i3_cor;
-  Eigen::Matrix<T, 3, 1>       t_i1_cor, t_i2_cor, t_i3_cor;
-  Eigen::Matrix<T, 3, 1>       bg = Eigen::Map<const Eigen::Matrix<T, 3, 1>>(bias_ptr + 0);
-  Eigen::Matrix<T, 3, 1>       ba = Eigen::Map<const Eigen::Matrix<T, 3, 1>>(bias_ptr + 3);
+  Vector3<T>                   t_i1_cor, t_i2_cor, t_i3_cor;
+  Vector3<T>                   bg = Eigen::Map<const Vector3<T>>(bias_ptr + 0);
+  Vector3<T>                   ba = Eigen::Map<const Vector3<T>>(bias_ptr + 3);
   ComputeStateCorr(sp1, sp2, sp3, sp1_timestamp_, sp2_timestamp_, sp3_timestamp_, i1_.timestamp, R_i1_cor, t_i1_cor);
   ComputeStateCorr(sp1, sp2, sp3, sp1_timestamp_, sp2_timestamp_, sp3_timestamp_, i2_.timestamp, R_i2_cor, t_i2_cor);
   ComputeStateCorr(sp1, sp2, sp3, sp1_timestamp_, sp2_timestamp_, sp3_timestamp_, i3_.timestamp, R_i3_cor, t_i3_cor);
@@ -85,7 +84,7 @@ ceres::CostFunction *ImuFactorWith3SampleStates::Create(const ImuState &i1, cons
 }
 
 template <typename T>
-void ImuFactorWith3SampleStates::ComputeStateCorr(Eigen::Map<const Vector6<T>> &sp1, Eigen::Map<const Vector6<T>> &sp2, Eigen::Map<const Vector6<T>> &sp3, double sp1_timestamp, double sp2_timestamp, double sp3_timestamp, double timestamp, Eigen::Quaternion<T> &R_cor, Eigen::Matrix<T, 3, 1> &t_cor) const {
+void ImuFactorWith3SampleStates::ComputeStateCorr(Eigen::Map<const Vector6<T>> &sp1, Eigen::Map<const Vector6<T>> &sp2, Eigen::Map<const Vector6<T>> &sp3, double sp1_timestamp, double sp2_timestamp, double sp3_timestamp, double timestamp, Eigen::Quaternion<T> &R_cor, Vector3<T> &t_cor) const {
   CHECK((timestamp >= sp1_timestamp && timestamp < sp2_timestamp) || (timestamp >= sp2_timestamp && timestamp <= sp3_timestamp))
       << std::fixed << std::setprecision(9) << "timestamp: " << timestamp << " sp1: " << sp1_timestamp << " sp2: " << sp2_timestamp << " sp3: " << sp3_timestamp;
 
@@ -114,10 +113,10 @@ bool ImuFactorWith2SampleStates::operator()(const T *sp1_ptr, const T *sp2_ptr, 
   Eigen::Map<const Vector6<T>> sp1{sp1_ptr};
   Eigen::Map<const Vector6<T>> sp2{sp2_ptr};
 
-  Eigen::Quaternion<T>   R_i1_cor, R_i2_cor, R_i3_cor;
-  Eigen::Matrix<T, 3, 1> t_i1_cor, t_i2_cor, t_i3_cor;
-  Eigen::Matrix<T, 3, 1> bg = Eigen::Map<const Eigen::Matrix<T, 3, 1>>{bias_ptr + 0};
-  Eigen::Matrix<T, 3, 1> ba = Eigen::Map<const Eigen::Matrix<T, 3, 1>>{bias_ptr + 3};
+  Eigen::Quaternion<T> R_i1_cor, R_i2_cor, R_i3_cor;
+  Vector3<T>           t_i1_cor, t_i2_cor, t_i3_cor;
+  Vector3<T>           bg = Eigen::Map<const Vector3<T>>{bias_ptr + 0};
+  Vector3<T>           ba = Eigen::Map<const Vector3<T>>{bias_ptr + 3};
   ComputeStateCorr(sp1, sp2, sp1_timestamp_, sp2_timestamp_, i1_.timestamp, R_i1_cor, t_i1_cor);
   ComputeStateCorr(sp1, sp2, sp1_timestamp_, sp2_timestamp_, i2_.timestamp, R_i2_cor, t_i2_cor);
   ComputeStateCorr(sp1, sp2, sp1_timestamp_, sp2_timestamp_, i3_.timestamp, R_i3_cor, t_i3_cor);
@@ -131,7 +130,7 @@ ceres::CostFunction *ImuFactorWith2SampleStates::Create(const ImuState &i1, cons
 }
 
 template <typename T>
-void ImuFactorWith2SampleStates::ComputeStateCorr(const Eigen::Map<const Vector6<T>> &sp1, const Eigen::Map<const Vector6<T>> &sp2, double sp1_timestamp, double sp2_timestamp, double timestamp, Eigen::Quaternion<T> &R_cor, Eigen::Matrix<T, 3, 1> &t_cor) const {
+void ImuFactorWith2SampleStates::ComputeStateCorr(const Eigen::Map<const Vector6<T>> &sp1, const Eigen::Map<const Vector6<T>> &sp2, double sp1_timestamp, double sp2_timestamp, double timestamp, Eigen::Quaternion<T> &R_cor, Vector3<T> &t_cor) const {
   CHECK(timestamp >= sp1_timestamp && timestamp <= sp2_timestamp) << std::fixed << std::setprecision(9) << "Timestamp order: " << timestamp << " sp1: " << sp1_timestamp << " sp2: " << sp2_timestamp;
 
   double factor = (timestamp - sp1_timestamp) / (sp2_timestamp - sp1_timestamp);
@@ -147,8 +146,7 @@ void ImuFactorWith2SampleStates::ComputeStateCorr(const Eigen::Map<const Vector6
 SurfelMatchBinaryFactor4SampleStates::SurfelMatchBinaryFactor4SampleStates(std::shared_ptr<Surfel> s1, std::shared_ptr<SampleState> sp1l, std::shared_ptr<SampleState> sp1r, std::shared_ptr<Surfel> s2, std::shared_ptr<SampleState> sp2l, std::shared_ptr<SampleState> sp2r) : s1_(s1), sp1l_(sp1l), sp1r_(sp1r), s2_(s2), sp2l_(sp2l), sp2r_(sp2r) {
   Matrix3d                                cov = s1_->covariance + s2_->covariance;
   Eigen::SelfAdjointEigenSolver<Matrix3d> es(cov);
-  weight_ = 1 / sqrt(pow(0.05 / 6, 2) + es.eigenvalues()[0]);
-  norm_   = es.eigenvectors().col(0);
+  norm_ = es.eigenvectors().col(0);
 }
 
 bool SurfelMatchBinaryFactor4SampleStates::Evaluate(double const *const *parameters,
@@ -168,7 +166,7 @@ bool SurfelMatchBinaryFactor4SampleStates::Evaluate(double const *const *paramet
 
   residuals[0] = sym::SurfelBinaryMatch4SamplesWithJacobians0123(
       sp1l_cor, sp1r_cor, sp2l_cor, sp2r_cor,
-      factor1, factor2, weight_, norm_, s1_->center, s2_->center,
+      factor1, factor2, norm_, s1_->center, s2_->center,
       eps,
       jacobians ? jacobians[0] : nullptr,
       jacobians ? jacobians[1] : nullptr,
@@ -181,8 +179,7 @@ bool SurfelMatchBinaryFactor4SampleStates::Evaluate(double const *const *paramet
 SurfelMatchBinaryFactor3SampleStates::SurfelMatchBinaryFactor3SampleStates(std::shared_ptr<Surfel> s1, std::shared_ptr<SampleState> sp1l, std::shared_ptr<SampleState> sp1r, std::shared_ptr<Surfel> s2, std::shared_ptr<SampleState> sp2r) : s1_(s1), sp1l_(sp1l), sp1r_(sp1r), s2_(s2), sp2l_(sp1r), sp2r_(sp2r) {
   Matrix3d                                cov = s1_->covariance + s2_->covariance;
   Eigen::SelfAdjointEigenSolver<Matrix3d> es(cov);
-  weight_ = 1 / sqrt(pow(0.05 / 6, 2) + es.eigenvalues()[0]);
-  norm_   = es.eigenvectors().col(0);
+  norm_ = es.eigenvectors().col(0);
 }
 
 bool SurfelMatchBinaryFactor3SampleStates::Evaluate(double const *const *parameters,
@@ -201,7 +198,7 @@ bool SurfelMatchBinaryFactor3SampleStates::Evaluate(double const *const *paramet
 
   residuals[0] = sym::SurfelBinaryMatch3SamplesWithJacobians012(
       sp1l_cor, sp1r_cor, sp2r_cor,
-      factor1, factor2, weight_, norm_, s1_->center, s2_->center,
+      factor1, factor2, norm_, s1_->center, s2_->center,
       eps,
       jacobians ? jacobians[0] : nullptr,
       jacobians ? jacobians[1] : nullptr,
@@ -213,8 +210,7 @@ bool SurfelMatchBinaryFactor3SampleStates::Evaluate(double const *const *paramet
 SurfelMatchBinaryFactor2SampleStates::SurfelMatchBinaryFactor2SampleStates(std::shared_ptr<Surfel> s1, std::shared_ptr<SampleState> sp1l, std::shared_ptr<SampleState> sp1r, std::shared_ptr<Surfel> s2) : s1_(s1), sp1l_(sp1l), sp1r_(sp1r), s2_(s2), sp2l_(sp1l), sp2r_(sp1r) {
   Matrix3d                                cov = s1_->covariance + s2_->covariance;
   Eigen::SelfAdjointEigenSolver<Matrix3d> es(cov);
-  weight_ = 1 / sqrt(pow(0.05 / 6, 2) + es.eigenvalues()[0]);
-  norm_   = es.eigenvectors().col(0);
+  norm_ = es.eigenvectors().col(0);
 }
 
 bool SurfelMatchBinaryFactor2SampleStates::Evaluate(double const *const *parameters,
@@ -232,7 +228,7 @@ bool SurfelMatchBinaryFactor2SampleStates::Evaluate(double const *const *paramet
 
   residuals[0] = sym::SurfelBinaryMatch2SamplesWithJacobians01(
       sp1l_cor, sp1r_cor,
-      factor1, factor2, weight_, norm_, s1_->center, s2_->center,
+      factor1, factor2, norm_, s1_->center, s2_->center,
       eps,
       jacobians ? jacobians[0] : nullptr,
       jacobians ? jacobians[1] : nullptr);

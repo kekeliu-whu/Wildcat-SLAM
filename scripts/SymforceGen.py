@@ -33,7 +33,6 @@ def surfel_unary_match(
     sp2l: Vector6,
     sp2r: Vector6,
     factor_sp2: sf.Scalar,
-    weight: sf.Scalar,
     normal: sf.V3,
     center_sp1: sf.V3,
     center_sp2: sf.V3,
@@ -49,7 +48,7 @@ def surfel_unary_match(
         ),
         (1.0 - factor_sp2) * sp2l[3:6] + factor_sp2 * sp2r[3:6],
     )
-    return weight * normal.dot(center_sp1 - sp2_pose_cor * center_sp2)
+    return normal.dot(center_sp1 - sp2_pose_cor * center_sp2)
 
 
 az_el_codegen = codegen.Codegen.function(
@@ -75,7 +74,6 @@ def surfel_binary_match_4_samples(
     sp2r: Vector6,
     factor_sp1: sf.Scalar,
     factor_sp2: sf.Scalar,
-    weight: sf.Scalar,
     normal: sf.V3,
     center_sp1: sf.V3,
     center_sp2: sf.V3,
@@ -101,7 +99,7 @@ def surfel_binary_match_4_samples(
         ),
         (1.0 - factor_sp2) * sp2l[3:6] + factor_sp2 * sp2r[3:6],
     )
-    return weight * normal.dot(sp1_pose_cor * center_sp1 - sp2_pose_cor * center_sp2)
+    return normal.dot(sp1_pose_cor * center_sp1 - sp2_pose_cor * center_sp2)
 
 
 az_el_codegen = codegen.Codegen.function(
@@ -126,7 +124,6 @@ def surfel_binary_match_3_samples(
     sp2r: Vector6,
     factor_sp1: sf.Scalar,
     factor_sp2: sf.Scalar,
-    weight: sf.Scalar,
     normal: sf.V3,
     center_sp1: sf.V3,
     center_sp2: sf.V3,
@@ -139,7 +136,6 @@ def surfel_binary_match_3_samples(
         sp2r,
         factor_sp1,
         factor_sp2,
-        weight,
         normal,
         center_sp1,
         center_sp2,
@@ -170,7 +166,6 @@ def surfel_binary_match_2_samples(
     sp1r: Vector6,
     factor_sp1: sf.Scalar,
     factor_sp2: sf.Scalar,
-    weight: sf.Scalar,
     normal: sf.V3,
     center_sp1: sf.V3,
     center_sp2: sf.V3,
@@ -183,7 +178,6 @@ def surfel_binary_match_2_samples(
         sp1r,
         factor_sp1,
         factor_sp2,
-        weight,
         normal,
         center_sp1,
         center_sp2,

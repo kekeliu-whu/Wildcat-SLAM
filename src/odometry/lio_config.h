@@ -48,6 +48,8 @@ struct LioConfig {
   double gyroscope_random_walk_cost_weight       = 1 / (gyroscope_random_walk / sqrt(imu_rate)) * imu_factor_weight;
   double accelerometer_random_walk_cost_weight   = 1 / (accelerometer_random_walk / sqrt(imu_rate)) * imu_factor_weight;
 
+  double surfel_match_cauchy = 0.05;
+
  public:
   LioConfig() {
     CHECK_EQ(imu_num_per_sweep * 1.0 / imu_rate, sweep_duration);

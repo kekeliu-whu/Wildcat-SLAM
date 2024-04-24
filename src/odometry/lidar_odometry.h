@@ -70,6 +70,8 @@ class LidarOdometry {
   ros::Publisher  pub_scan_in_imu_frame_;
   ros::Publisher  pub_imu_path_;
 
+  std::unique_ptr<ceres::LossFunction> surfel_match_cauchy_loss_;
+
   int sweep_id_ = 0;
 
   OdometryIO io_;

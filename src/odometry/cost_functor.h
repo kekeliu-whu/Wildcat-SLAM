@@ -5,6 +5,9 @@
 #include "odometry/surfel.h"
 
 template <typename T>
+using Vector3 = Eigen::Matrix<T, 3, 1>;
+
+template <typename T>
 using Vector6 = Eigen::Matrix<T, 6, 1>;
 
 /**
@@ -57,7 +60,6 @@ class SurfelMatchBinaryFactor4SampleStates : public ceres::SizedCostFunction<1, 
   std::shared_ptr<SampleState> sp2r_;
 
   Vector3d norm_;
-  double   weight_;
 };
 
 /**
@@ -83,7 +85,6 @@ class SurfelMatchBinaryFactor3SampleStates : public ceres::SizedCostFunction<1, 
   std::shared_ptr<SampleState> sp2r_;
 
   Vector3d norm_;
-  double   weight_;
 };
 
 /**
@@ -109,7 +110,6 @@ class SurfelMatchBinaryFactor2SampleStates : public ceres::SizedCostFunction<1, 
   std::shared_ptr<SampleState> sp2r_;
 
   Vector3d norm_;
-  double   weight_;
 };
 
 /**
@@ -137,12 +137,12 @@ struct ImuFactorWith3SampleStates {
       Eigen::Map<const Vector6<T>>& sp1,
       Eigen::Map<const Vector6<T>>& sp2,
       Eigen::Map<const Vector6<T>>& sp3,
-      double                         sp1_timestamp,
-      double                         sp2_timestamp,
-      double                         sp3_timestamp,
-      double                         timestamp,
-      Eigen::Quaternion<T>&          R_cor,
-      Eigen::Matrix<T, 3, 1>&        t_cor) const;
+      double                        sp1_timestamp,
+      double                        sp2_timestamp,
+      double                        sp3_timestamp,
+      double                        timestamp,
+      Eigen::Quaternion<T>&         R_cor,
+      Vector3<T>&       t_cor) const;
 
  private:
   ImuState i1_, i2_, i3_;
@@ -181,11 +181,11 @@ struct ImuFactorWith2SampleStates {
   void ComputeStateCorr(
       const Eigen::Map<const Vector6<T>>& sp1,
       const Eigen::Map<const Vector6<T>>& sp2,
-      double                               sp1_timestamp,
-      double                               sp2_timestamp,
-      double                               timestamp,
-      Eigen::Quaternion<T>&                R_cor,
-      Eigen::Matrix<T, 3, 1>&              t_cor) const;
+      double                              sp1_timestamp,
+      double                              sp2_timestamp,
+      double                              timestamp,
+      Eigen::Quaternion<T>&               R_cor,
+      Vector3<T>&             t_cor) const;
 
  private:
   ImuState i1_, i2_, i3_;
